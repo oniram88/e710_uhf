@@ -20,12 +20,14 @@ impl std::error::Error for FrameError {}
 
 pub enum Command {
     GetFirmwareVersion,
+    GetTemperature,
 }
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
+            Command::GetTemperature => write!(f, "Temperature"),
         }
     }
 }
@@ -46,6 +48,7 @@ impl SerializableCommand for Command {
     fn to_bytes(&self) -> Vec<u8> {
         match self {
             Command::GetFirmwareVersion => vec![0x72],
+            Command::GetTemperature => vec![0x7B],
         }
     }
 
@@ -54,6 +57,7 @@ impl SerializableCommand for Command {
             0x72 => {
                 Ok(Command::GetFirmwareVersion)
             }
+            0x7B => Ok(Command::GetTemperature),
             _ => Err(FrameError::InvalidCommand(format!(
                 "Invalid command code: {}",
                 raw[0]
@@ -128,9 +132,8 @@ mod tests {
     #[test]
     fn test_command_from_byte() {
         let cmd = Command::from_byte(vec![0x72]).unwrap();
-        match cmd {
-            Command::GetFirmwareVersion => (),
-        }
+
+        assert!(matches!(cmd, Command::GetFirmwareVersion));
 
         let err = Command::from_byte(vec![0x00]);
         assert!(err.is_err());
@@ -154,7 +157,7 @@ mod tests {
         // ADDR: FF
         // PAYLOAD: 72
         // CHECKSUM: EC (calcolato in test_checksum)
-        assert_eq!(bytes, vec![0xA0, 0x03, 0xFF, 0x72, 0xEC]);
+        assert_eq!(bytes, vec![0xA0, 0x03, RS485_ADDRESS, 0x72, 0xEA]);
     }
 
     #[test]
