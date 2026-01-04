@@ -1,3 +1,3 @@
-mod connector;
-mod frame;
+pub mod connector;
+pub mod frame;
 

@@ -18,7 +18,7 @@ impl Display for FrameError {
 
 impl std::error::Error for FrameError {}
 
-pub(crate) enum Command {
+pub enum Command {
     GetFirmwareVersion,
 }
 
@@ -34,7 +34,7 @@ impl Display for Command {
 pub(crate) trait SerializableCommand {
     /// Returns a tuple of bytes (command, parameters)
     /// Parameters may be empty if not present
-    fn to_bytes(&self) -> (Vec<u8>);
+    fn to_bytes(&self) -> Vec<u8>;
     fn from_byte(raw: Vec<u8>) -> Result<Self, FrameError>
     where
         Self: Sized;
@@ -43,15 +43,15 @@ pub(crate) trait SerializableCommand {
 impl SerializableCommand for Command {
     ///
     /// Genera i bytes che identificano comando e dati nel caso di un comando con dati
-    fn to_bytes(&self) -> (Vec<u8>) {
+    fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Command::GetFirmwareVersion => (vec![0x72]),
+            Command::GetFirmwareVersion => vec![0x72],
         }
     }
 
     fn from_byte(raw: Vec<u8>) -> Result<Self, FrameError> {
-        match (raw[0]) {
-            (0x72) => {
+        match raw[0] {
+            0x72 => {
                 Ok(Command::GetFirmwareVersion)
             }
             _ => Err(FrameError::InvalidCommand(format!(
@@ -62,16 +62,16 @@ impl SerializableCommand for Command {
     }
 }
 
-pub(crate) struct Frame {
+pub struct Frame {
     payload: Vec<u8>,
 }
 
 impl Frame {
-    pub(crate) fn new(payload: &Command) -> Self {
+    pub fn new(payload: &Command) -> Self {
         Frame { payload: payload.to_bytes() }
     }
 
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::new();
         v.push(FRAME_HEADER); // HEADER
         v.push((self.payload.len()  + 2) as u8) ; // payload + un byte per address e un byte per checksum
