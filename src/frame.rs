@@ -28,23 +28,45 @@ impl std::error::Error for FrameError {}
 
 #[derive(Clone)]
 pub enum Command {
+    Reset,
+    // SetUartBaudRate,
     GetFirmwareVersion,
-    GetTemperature,
+    // SetReaderAddress,
+    // SetWorkAntenna,
+    GetWorkAntenna,
+    // SetOutputPower,
+    // GetOutputPower,
+    // SetFrequencyRegion,
     GetFrequencyRegion,
+    // SetBeeperMode,
+    GetReaderTemperature,
+    // ReadGpioValue,
+    // WriteGpioValue,
+    // SetAntConnectionDetector
+    // GetAntConnectionDetector,
+    // SetTemporaryOutputPower,
+    // SetReaderIdentifier,
+    // GetReaderIdentifier,
+    // SetRfLinkProfile,
+    // GetRfLinkProfile,
+    // GetRfPortReturnLoss
 }
 
 #[derive(Debug)]
 pub enum CommandResult {
     GetFirmwareVersion((u8, u8)),
-    GetTemperature(f64),
+    GetWorkAntenna(u8), //posizione antenna
+    GetReaderTemperature(f64),
     GetFrequencyRegion(String),
 }
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Command::Reset => write!(f, "Reset"),
+            Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
-            Command::GetTemperature => write!(f, "Temperature"),
+            Command::GetReaderTemperature => write!(f, "Temperature"),
             Command::GetFrequencyRegion => write!(f, "Frequency Region"),
         }
     }
@@ -56,7 +78,8 @@ impl Display for CommandResult {
             CommandResult::GetFirmwareVersion((major, minor)) => {
                 write!(f, "Firmware Version [{major}.{minor}]")
             }
-            CommandResult::GetTemperature(tmp) => write!(f, "Temperature [{tmp} °C]"),
+            CommandResult::GetWorkAntenna(pos) => write!(f, "Work Antenna [{pos}]"),
+            CommandResult::GetReaderTemperature(tmp) => write!(f, "Temperature [{tmp} °C]"),
             CommandResult::GetFrequencyRegion(region) => write!(f, "Frequency Region [{region}]"),
         }
     }
@@ -77,8 +100,10 @@ impl SerializableCommand for Command {
     /// Genera i bytes che identificano comando e dati nel caso di un comando con dati
     fn to_bytes(&self) -> Vec<u8> {
         match self {
+            Command::Reset => vec![0xA0],
+            Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
-            Command::GetTemperature => vec![0x7B],
+            Command::GetReaderTemperature => vec![0x7B],
             Command::GetFrequencyRegion => vec![0x79],
         }
     }
@@ -108,13 +133,13 @@ impl SerializableCommand for Command {
 
         match raw_command {
             0x72 => {
-                let version = from_bytes_to_utf8(&data);
                 Ok(CommandResult::GetFirmwareVersion((data[0], data[1])))
             }
+            0x75 => Ok(CommandResult::GetWorkAntenna(data[0] + 1 )),
             0x7B => {
-                let sign: f64 = if (data[0] == 0x00) { -1.0 } else { 1.0 };
+                let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
 
-                Ok(CommandResult::GetTemperature(data[1] as f64 * sign))
+                Ok(CommandResult::GetReaderTemperature(data[1] as f64 * sign))
             }
             0x79 => {
                 match data[0] {
@@ -141,7 +166,7 @@ impl SerializableCommand for Command {
                 }
             }
             _ => Err(FrameError::InvalidCommand(format!(
-                "Invalid command code: {}",
+                "Invalid Response command code: {}",
                 raw[0]
             ))),
         }
@@ -224,7 +249,7 @@ mod tests {
     #[test]
     fn test_command_from_byte() {
         let cmd = Command::from_byte(vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1]).unwrap();
-        let expected_version = (70 as u8,1 as u8);
+        let expected_version = (70 as u8, 1 as u8);
 
         assert!(matches!(cmd, CommandResult::GetFirmwareVersion(ref v) if *v == expected_version));
 
@@ -264,7 +289,7 @@ mod tests {
         let cmd = Command::from_byte(vec![0xA0, 0x05, 0x01, 0x7B, 0x01, 0x17, 0xC7]).unwrap();
         let expected = 23.0;
 
-        assert!(matches!(cmd, CommandResult::GetTemperature(ref v) if *v == expected));
+        assert!(matches!(cmd, CommandResult::GetReaderTemperature(ref v) if *v == expected));
     }
 
     #[test]
@@ -278,5 +303,16 @@ mod tests {
             panic!("Expected GetFrequencyRegion, got {:?}", result);
         }
     }
-    
+
+    #[test]
+    fn test_get_work_antenna() {
+        let raw_packet = vec! [0xA0,0x04,0x01,0x75,0x00,0xE6];
+        let result = Command::from_byte(raw_packet).unwrap();
+
+        if let CommandResult::GetWorkAntenna(pos) = result {
+            assert_eq!(pos, 1);
+        } else {
+            panic!("Expected GetWorkAntenna, got {:?}", result);
+        }
+    }
 }

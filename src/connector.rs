@@ -1,4 +1,4 @@
-use crate::frame::{Command, CommandResult, Frame, SerializableCommand};
+use crate::frame::{Command, CommandResult, Frame, FrameError, SerializableCommand};
 use log::debug;
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -16,6 +16,7 @@ pub enum ConnectorError {
     Timeout,
     FailedSetting(String),
     SerialRead(String),
+    Frame(FrameError),
 }
 
 impl fmt::Display for ConnectorError {
@@ -25,6 +26,7 @@ impl fmt::Display for ConnectorError {
             ConnectorError::Timeout => write!(f, "Timeout"),
             ConnectorError::SerialRead(msg) => write!(f, "Serial read error: {}", msg),
             ConnectorError::FailedSetting(msg) => write!(f, "Failed Setting: {}", msg),
+            ConnectorError::Frame(err) => write!(f, "Frame error: {}", err),
         }
     }
 }
@@ -32,6 +34,12 @@ impl fmt::Display for ConnectorError {
 impl From<io::Error> for ConnectorError {
     fn from(err: io::Error) -> Self {
         ConnectorError::Io(err)
+    }
+}
+
+impl From<FrameError> for ConnectorError {
+    fn from(err: FrameError) -> Self {
+        ConnectorError::Frame(err)
     }
 }
 
@@ -66,7 +74,14 @@ where
     pub fn read_command(&mut self) -> Result<CommandResult, ConnectorError> {
         let response = self.read_response()?;
         debug!("[RX] {:02X?}", response);
-        println!("[RX] {:02X?}", response);
-        Ok(Command::from_byte(response).unwrap())
+        println!(
+            "[RX] [{}]",
+            response
+                .iter()
+                .map(|b| format!("0x{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        Ok(Command::from_byte(response)?)
     }
 }

@@ -25,7 +25,8 @@ fn main() -> std::io::Result<()> {
         // Vettore di comandi da eseguire
         let commands = vec![
             Command::GetFirmwareVersion,
-            Command::GetTemperature,
+            Command::GetWorkAntenna,
+            Command::GetReaderTemperature,
             Command::GetFrequencyRegion
         ];
 
