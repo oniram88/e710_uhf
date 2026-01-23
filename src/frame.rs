@@ -57,11 +57,11 @@ pub enum Command {
 
 #[derive(Debug)]
 pub enum CommandResult {
-    GetFirmwareVersion((u8, u8)),
-    GetWorkAntenna(u8), //posizione antenna
-    GetReaderTemperature(f64),
+    GetFirmwareVersion(Result<(u8, u8), FrameError>),
+    GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
+    GetReaderTemperature(Result<f64, FrameError>),
     SetDefaultFrequencyRegion(Result<(), FrameError>),
-    GetFrequencyRegion(String),
+    GetFrequencyRegion(Result<String, FrameError>),
 }
 
 impl Display for Command {
@@ -80,14 +80,18 @@ impl Display for Command {
 impl Display for CommandResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandResult::GetFirmwareVersion((major, minor)) => {
+            CommandResult::GetFirmwareVersion(Ok((major, minor))) => {
                 write!(f, "Firmware Version [{major}.{minor}]")
             }
-            CommandResult::GetWorkAntenna(pos) => write!(f, "Work Antenna [{pos}]"),
-            CommandResult::GetReaderTemperature(tmp) => write!(f, "Temperature [{tmp} °C]"),
+            CommandResult::GetFirmwareVersion(Err(err)) => write!(f, "Failed to get Firmware Version: {}", err),
+            CommandResult::GetWorkAntenna(Ok(pos)) => write!(f, "Work Antenna [{pos}]"),
+            CommandResult::GetWorkAntenna(Err(err)) => write!(f, "Failed to get Work Antenna: {}", err),
+            CommandResult::GetReaderTemperature(Ok(tmp)) => write!(f, "Temperature [{tmp} °C]"),
+            CommandResult::GetReaderTemperature(Err(err)) => write!(f, "Failed to get Temperature: {}", err),
             CommandResult::SetDefaultFrequencyRegion(Ok(())) => write!(f, "Frequency Region set successfully"),
             CommandResult::SetDefaultFrequencyRegion(Err(err)) => write!(f, "Failed to set Frequency Region: {}", err),
-            CommandResult::GetFrequencyRegion(region) => write!(f, "Frequency Region [{region}]"),
+            CommandResult::GetFrequencyRegion(Ok(region)) => write!(f, "Frequency Region [{region}]"),
+            CommandResult::GetFrequencyRegion(Err(err)) => write!(f, "Failed to get Frequency Region: {}", err),
         }
     }
 }
@@ -146,36 +150,36 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
-            0x72 => Ok(CommandResult::GetFirmwareVersion((data[0], data[1]))),
-            0x75 => Ok(CommandResult::GetWorkAntenna(data[0] + 1)),
+            0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+            0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
             0x7B => {
                 let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
 
-                Ok(CommandResult::GetReaderTemperature(data[1] as f64 * sign))
+                Ok(CommandResult::GetReaderTemperature(Ok(data[1] as f64 * sign)))
             }
             0x78 => {
                 Ok(CommandResult::SetDefaultFrequencyRegion(build_response_from_code(data)))
             },
             0x79 => {
                 match data[0] {
-                    0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(format!(
+                    0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
                         "FCC {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    ))),
-                    0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(format!(
+                    )))),
+                    0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
                         "ETSI {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    ))),
-                    0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(format!(
+                    )))),
+                    0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
                         "CHN {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    ))),
+                    )))),
                     0x04 if length == 9 => {
                         // todo!("Da completare la versione impostata dall'utente");
-                        Ok(CommandResult::GetFrequencyRegion("CUSTOM".to_string()))
+                        Ok(CommandResult::GetFrequencyRegion(Ok("CUSTOM".to_string())))
                     }
                     _ => Err(FrameError::ResponseNotExpected(raw.clone())),
                 }
@@ -273,7 +277,7 @@ mod tests {
         let cmd = Command::from_byte(vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1]).unwrap();
         let expected_version = (70 as u8, 1 as u8);
 
-        assert!(matches!(cmd, CommandResult::GetFirmwareVersion(ref v) if *v == expected_version));
+        assert!(matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version));
 
         let err = Command::from_byte(vec![0x00]);
         assert!(err.is_err());
@@ -311,7 +315,7 @@ mod tests {
         let cmd = Command::from_byte(vec![0xA0, 0x05, 0x01, 0x7B, 0x01, 0x17, 0xC7]).unwrap();
         let expected = 23.0;
 
-        assert!(matches!(cmd, CommandResult::GetReaderTemperature(ref v) if *v == expected));
+        assert!(matches!(cmd, CommandResult::GetReaderTemperature(Ok(ref v)) if *v == expected));
     }
 
     #[test]
@@ -319,22 +323,22 @@ mod tests {
         let raw_packet = vec![0xA0, 0x06, 0x01, 0x79, 0x01, 0x07, 0x3B, 0x9D];
         let result = Command::from_byte(raw_packet).unwrap();
 
-        if let CommandResult::GetFrequencyRegion(region) = result {
+        if let CommandResult::GetFrequencyRegion(Ok(region)) = result {
             assert_eq!(region, "FCC 902->928");
         } else {
-            panic!("Expected GetFrequencyRegion, got {:?}", result);
+            panic!("Expected GetFrequencyRegion(Ok), got {:?}", result);
         }
     }
 
     #[test]
     fn test_get_work_antenna() {
-        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
+        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xEA];
         let result = Command::from_byte(raw_packet).unwrap();
 
-        if let CommandResult::GetWorkAntenna(pos) = result {
+        if let CommandResult::GetWorkAntenna(Ok(pos)) = result {
             assert_eq!(pos, 1);
         } else {
-            panic!("Expected GetWorkAntenna, got {:?}", result);
+            panic!("Expected GetWorkAntenna(Ok), got {:?}", result);
         }
     }
 }
