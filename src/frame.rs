@@ -1,6 +1,7 @@
-use crate::frequency_references::get_frequency;
+use crate::frequency_references::{Spectrum, get_frequency, get_param};
 use log::debug;
 use std::fmt::{Display, Formatter};
+use crate::error_references::ErrorCode;
 
 const FRAME_HEADER: u8 = 0xA0;
 const RS485_ADDRESS: u8 = 0x01;
@@ -10,6 +11,7 @@ pub enum FrameError {
     InvalidCommand(String),
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
+    FailedResponse(ErrorCode, Vec<u8>),
 }
 
 impl Display for FrameError {
@@ -20,6 +22,7 @@ impl Display for FrameError {
                 write!(f, "Response not expected [RX] {:02X?}", response)
             }
             FrameError::InvalidPacket(packet) => write!(f, "Invalid packet [RX] {:02X?}", packet),
+            FrameError::FailedResponse(code, packet) => write!(f, "Failed response with code {:?} and DATA {:02X?}", code, packet),
         }
     }
 }
@@ -36,7 +39,7 @@ pub enum Command {
     GetWorkAntenna,
     // SetOutputPower,
     // GetOutputPower,
-    // SetFrequencyRegion,
+    SetDefaultFrequencyRegion(Spectrum, f64, f64), // use default frequencies
     GetFrequencyRegion,
     // SetBeeperMode,
     GetReaderTemperature,
@@ -57,6 +60,7 @@ pub enum CommandResult {
     GetFirmwareVersion((u8, u8)),
     GetWorkAntenna(u8), //posizione antenna
     GetReaderTemperature(f64),
+    SetDefaultFrequencyRegion(Result<(), FrameError>),
     GetFrequencyRegion(String),
 }
 
@@ -67,6 +71,7 @@ impl Display for Command {
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
+            Command::SetDefaultFrequencyRegion(spectrum, min, max) => write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]"),
             Command::GetFrequencyRegion => write!(f, "Frequency Region"),
         }
     }
@@ -80,6 +85,8 @@ impl Display for CommandResult {
             }
             CommandResult::GetWorkAntenna(pos) => write!(f, "Work Antenna [{pos}]"),
             CommandResult::GetReaderTemperature(tmp) => write!(f, "Temperature [{tmp} °C]"),
+            CommandResult::SetDefaultFrequencyRegion(Ok(())) => write!(f, "Frequency Region set successfully"),
+            CommandResult::SetDefaultFrequencyRegion(Err(err)) => write!(f, "Failed to set Frequency Region: {}", err),
             CommandResult::GetFrequencyRegion(region) => write!(f, "Frequency Region [{region}]"),
         }
     }
@@ -104,6 +111,13 @@ impl SerializableCommand for Command {
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
             Command::GetReaderTemperature => vec![0x7B],
+            Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
+                let mut v = vec![0x78];
+                v.push(spectrum.clone() as u8);
+                v.push(get_param(*min));
+                v.push(get_param(*max));
+                v
+            }
             Command::GetFrequencyRegion => vec![0x79],
         }
     }
@@ -132,15 +146,16 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
-            0x72 => {
-                Ok(CommandResult::GetFirmwareVersion((data[0], data[1])))
-            }
-            0x75 => Ok(CommandResult::GetWorkAntenna(data[0] + 1 )),
+            0x72 => Ok(CommandResult::GetFirmwareVersion((data[0], data[1]))),
+            0x75 => Ok(CommandResult::GetWorkAntenna(data[0] + 1)),
             0x7B => {
                 let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
 
                 Ok(CommandResult::GetReaderTemperature(data[1] as f64 * sign))
             }
+            0x78 => {
+                Ok(CommandResult::SetDefaultFrequencyRegion(build_response_from_code(data)))
+            },
             0x79 => {
                 match data[0] {
                     0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(format!(
@@ -180,6 +195,13 @@ fn from_bytes_to_utf8(bytes: &Vec<u8>) -> String {
         text.to_string()
     } else {
         "Invalid UTF-8".to_string()
+    }
+}
+
+fn build_response_from_code(data: Vec<u8>) -> Result<(), FrameError> {
+    match ErrorCode::from_hex(data[0]) {
+        ErrorCode::CommandSuccess => Ok(()),
+        response_error => Err(FrameError::FailedResponse(response_error,data)),
     }
 }
 
@@ -306,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_get_work_antenna() {
-        let raw_packet = vec! [0xA0,0x04,0x01,0x75,0x00,0xE6];
+        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
         let result = Command::from_byte(raw_packet).unwrap();
 
         if let CommandResult::GetWorkAntenna(pos) = result {

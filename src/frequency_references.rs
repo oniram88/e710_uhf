@@ -62,7 +62,7 @@
 |  				58(0x3A) 			 |  				927.50 MHz 			 |
 |  				59(0x3B) 			 |  				928.00 MHz 			 |
 */
-
+use std::fmt::Display;
 
 pub fn get_frequency(param: u8) -> f64 {
     match param {
@@ -126,7 +126,89 @@ pub fn get_frequency(param: u8) -> f64 {
         0x39 => 927.00,
         0x3A => 927.50,
         0x3B => 928.00,
-        _ => panic!("Invalid frequency param")
+        _ => panic!("Invalid frequency param"),
     }
 }
 
+pub fn get_param(frequency: f64) -> u8 {
+    match frequency {
+        865.00 => 0x00,
+        865.50 => 0x01,
+        866.00 => 0x02,
+        866.50 => 0x03,
+        867.00 => 0x04,
+        867.50 => 0x05,
+        868.00 => 0x06,
+        902.00 => 0x07,
+        902.50 => 0x08,
+        903.00 => 0x09,
+        903.50 => 0x0A,
+        904.00 => 0x0B,
+        904.50 => 0x0C,
+        905.00 => 0x0D,
+        905.50 => 0x0E,
+        906.00 => 0x0F,
+        906.50 => 0x10,
+        907.00 => 0x11,
+        907.50 => 0x12,
+        908.00 => 0x13,
+        908.50 => 0x14,
+        909.00 => 0x15,
+        909.50 => 0x16,
+        910.00 => 0x17,
+        910.50 => 0x18,
+        911.00 => 0x19,
+        911.50 => 0x1A,
+        912.00 => 0x1B,
+        912.50 => 0x1C,
+        913.00 => 0x1D,
+        913.50 => 0x1E,
+        914.00 => 0x1F,
+        914.50 => 0x20,
+        915.00 => 0x21,
+        915.50 => 0x22,
+        916.00 => 0x23,
+        916.50 => 0x24,
+        917.00 => 0x25,
+        917.50 => 0x26,
+        918.00 => 0x27,
+        918.50 => 0x28,
+        919.00 => 0x29,
+        919.50 => 0x2A,
+        920.00 => 0x2B,
+        920.50 => 0x2C,
+        921.00 => 0x2D,
+        921.50 => 0x2E,
+        922.00 => 0x2F,
+        922.50 => 0x30,
+        923.00 => 0x31,
+        923.50 => 0x32,
+        924.00 => 0x33,
+        924.50 => 0x34,
+        925.00 => 0x35,
+        925.50 => 0x36,
+        926.00 => 0x37,
+        926.50 => 0x38,
+        927.00 => 0x39,
+        927.50 => 0x3A,
+        928.00 => 0x3B,
+        _ => panic!("Invalid frequency param"),
+    }
+}
+
+#[derive(Clone)]
+pub enum Spectrum {
+    FCC,
+    ETSI,
+    CHN,
+}
+
+impl Display for Spectrum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Spectrum::FCC => write!(f, "FCC"),
+            Spectrum::ETSI => write!(f, "ETSI"),
+            Spectrum::CHN => write!(f, "CHN"),
+        }
+    }
+}

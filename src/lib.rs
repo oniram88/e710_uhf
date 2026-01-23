@@ -1,4 +1,4 @@
 pub mod connector;
+pub mod error_references;
 pub mod frame;
-mod frequency_references;
-
+pub mod frequency_references;

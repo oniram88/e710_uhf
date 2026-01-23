@@ -3,6 +3,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::{Command, Frame};
+use e710_uhf::frequency_references::{get_frequency, get_param, Spectrum};
 
 fn main() -> std::io::Result<()> {
     // Indirizzo IP e porta del lettore UHF
@@ -27,7 +28,9 @@ fn main() -> std::io::Result<()> {
             Command::GetFirmwareVersion,
             Command::GetWorkAntenna,
             Command::GetReaderTemperature,
-            Command::GetFrequencyRegion
+            Command::GetFrequencyRegion,
+            Command::SetDefaultFrequencyRegion(Spectrum::ETSI, 865.0, 868.0),
+            Command::GetFrequencyRegion,
         ];
 
         // Ciclo sui comandi

@@ -67,6 +67,7 @@ where
         let bytes = frame.to_bytes();
 
         debug!("[TX] {:02X?} - [{cmd}]", bytes);
+        println!("[TX] {:02X?} - [{cmd}]", bytes);
         self.send_frame(&bytes)?;
         Ok(())
     }
