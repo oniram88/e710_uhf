@@ -1,7 +1,9 @@
+use std::cmp::PartialEq;
 use crate::frame::{Command, CommandResult, Frame, FrameError, SerializableCommand};
 use log::debug;
 use std::fmt;
 use std::io::{self, Read, Write};
+use crate::frequency_references::Spectrum;
 
 pub struct Connector<P>
 where
@@ -85,4 +87,21 @@ where
         );
         Ok(Command::from_byte(response)?)
     }
+
+    pub fn set_frequency_if_not(&mut self, p0: Spectrum, p1: f64, p2: f64) -> Result<(), ConnectorError> {
+
+        self.send_command(Command::GetFrequencyRegion)?;
+        let response = self.read_command()?;
+
+        if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
+            if region.0 != p0 || region.1 != p1 || region.2 != p2 {
+                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}",p0, p1, p2);
+                self.send_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
+                self.read_command()?;
+            }
+        }
+
+        Ok(())
+    }
+
 }

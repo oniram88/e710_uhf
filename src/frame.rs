@@ -66,7 +66,7 @@ pub enum CommandResult {
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
     GetReaderTemperature(Result<f64, FrameError>),
     SetDefaultFrequencyRegion(Result<(), FrameError>),
-    GetFrequencyRegion(Result<String, FrameError>),
+    GetFrequencyRegion(Result<(Spectrum, f64, f64), FrameError>),
 }
 
 impl Display for Command {
@@ -107,8 +107,8 @@ impl Display for CommandResult {
             CommandResult::SetDefaultFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to set Frequency Region: {}", err)
             }
-            CommandResult::GetFrequencyRegion(Ok(region)) => {
-                write!(f, "Frequency Region [{region}]")
+            CommandResult::GetFrequencyRegion(Ok((spectrum, min, max))) => {
+                write!(f, "Frequency Region [{spectrum} [{min} -> {max}]")
             }
             CommandResult::GetFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to get Frequency Region: {}", err)
@@ -129,10 +129,20 @@ pub(crate) trait SerializableCommand {
 }
 
 macro_rules! parse_response {
-    ($data:expr, $success_block:expr) => {
+    ($data:expr) => {
         match ErrorCode::from_hex($data[0]) {
-            ErrorCode::CommandSuccess => $success_block($data),
+            ErrorCode::CommandSuccess => Ok(()),
             response_error => Err(FrameError::FailedResponse(response_error, $data)),
+        }
+    };
+    ($data:expr, $success_block:expr) => {
+        if $data.len() == 4 {
+            match ErrorCode::from_hex($data[0]) {
+                ErrorCode::CommandSuccess => $success_block($data),
+                response_error => Err(FrameError::FailedResponse(response_error, $data)),
+            }
+        } else {
+            $success_block($data)
         }
     };
 }
@@ -181,15 +191,9 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
-            0x70 => Ok(CommandResult::Reset(parse_response!(data, |_| Ok(())))),
-            0x72 => Ok(CommandResult::GetFirmwareVersion(parse_response!(
-                data,
-                |data: Vec<u8>| Ok((data[0], data[1]))
-            ))),
-            0x75 => Ok(CommandResult::GetWorkAntenna(parse_response!(
-                data,
-                |data: Vec<u8>| Ok(data[0] + 1)
-            ))),
+            0x70 => Ok(CommandResult::Reset(parse_response!(data))),
+            0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+            0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
             0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
                 data,
                 |data: Vec<u8>| {
@@ -198,37 +202,40 @@ impl SerializableCommand for Command {
                 }
             ))),
             0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
-                data,
-                |_| Ok(())
+                data
             ))),
             0x79 => match data[0] {
                 0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
                     data,
-                    |data: Vec<u8>| Ok(format!(
-                        "FCC {}->{}",
+                    |data: Vec<u8>| Ok((
+                        Spectrum::FCC,
                         get_frequency(data[1]),
                         get_frequency(data[2])
                     ))
                 ))),
                 0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
                     data,
-                    |data: Vec<u8>| Ok(format!(
-                        "ETSI {}->{}",
+                    |data: Vec<u8>| Ok((
+                        Spectrum::ETSI,
                         get_frequency(data[1]),
                         get_frequency(data[2])
                     ))
                 ))),
                 0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
                     data,
-                    |data: Vec<u8>| Ok(format!(
-                        "CHN {}->{}",
+                    |data: Vec<u8>| Ok((
+                        Spectrum::CHN,
                         get_frequency(data[1]),
                         get_frequency(data[2])
                     ))
                 ))),
                 0x04 if length == 9 => {
                     // todo!("Da completare la versione impostata dall'utente");
-                    Ok(CommandResult::GetFrequencyRegion(Ok("CUSTOM".to_string())))
+                    Ok(CommandResult::GetFrequencyRegion(Ok((
+                        Spectrum::CUSTOM,
+                        0.0,
+                        0.0,
+                    ))))
                 }
                 _ => Err(FrameError::ResponseNotExpected(raw.clone())),
             },
@@ -367,7 +374,10 @@ mod tests {
         let result = Command::from_byte(raw_packet).unwrap();
 
         if let CommandResult::GetFrequencyRegion(Ok(region)) = result {
-            assert_eq!(region, "FCC 902->928");
+            assert_eq!(
+                format!("{} {}->{}", region.0, region.1, region.2),
+                "FCC 902->928"
+            );
         } else {
             panic!("Expected GetFrequencyRegion(Ok), got {:?}", result);
         }

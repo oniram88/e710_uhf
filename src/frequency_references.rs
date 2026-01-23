@@ -196,11 +196,12 @@ pub fn get_param(frequency: f64) -> u8 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Debug,PartialEq)]
 pub enum Spectrum {
     FCC = 0x01,
     ETSI = 0x02,
     CHN = 0x03,
+    CUSTOM = 0x04,
 }
 
 impl Display for Spectrum {
@@ -209,6 +210,7 @@ impl Display for Spectrum {
             Spectrum::FCC => write!(f, "FCC"),
             Spectrum::ETSI => write!(f, "ETSI"),
             Spectrum::CHN => write!(f, "CHN"),
+            Spectrum::CUSTOM => write!(f, "CUSTOM"),
         }
     }
 }

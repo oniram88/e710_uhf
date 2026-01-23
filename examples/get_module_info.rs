@@ -28,9 +28,6 @@ fn main() -> std::io::Result<()> {
             Command::GetFirmwareVersion,
             Command::GetWorkAntenna,
             Command::GetReaderTemperature,
-            Command::GetFrequencyRegion,
-            Command::SetDefaultFrequencyRegion(Spectrum::ETSI, 865.0, 868.0),
-            Command::GetFrequencyRegion,
         ];
 
         // Ciclo sui comandi
@@ -43,6 +40,12 @@ fn main() -> std::io::Result<()> {
 
             sleep(Duration::from_secs(1));
         }
+
+
+        println!("Controllo frequenza:");
+        connector.set_frequency_if_not(Spectrum::ETSI, 865.0, 868.0).unwrap();
+
+
 
         sleep(Duration::from_secs(4));
 
