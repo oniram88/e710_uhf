@@ -57,6 +57,7 @@ pub enum Command {
 
 #[derive(Debug)]
 pub enum CommandResult {
+    Reset(Result<(), FrameError>),
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
     GetReaderTemperature(Result<f64, FrameError>),
@@ -92,6 +93,7 @@ impl Display for CommandResult {
             CommandResult::SetDefaultFrequencyRegion(Err(err)) => write!(f, "Failed to set Frequency Region: {}", err),
             CommandResult::GetFrequencyRegion(Ok(region)) => write!(f, "Frequency Region [{region}]"),
             CommandResult::GetFrequencyRegion(Err(err)) => write!(f, "Failed to get Frequency Region: {}", err),
+            CommandResult::Reset(_) => write!(f, "Failed to reset"),  // il reset può solo fallire
         }
     }
 }
@@ -150,6 +152,7 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
+            0x70 => Ok(CommandResult::Reset(build_response_from_code(data))),
             0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
             0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
             0x7B => {
