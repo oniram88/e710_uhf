@@ -1,7 +1,7 @@
+use crate::error_references::ErrorCode;
 use crate::frequency_references::{Spectrum, get_frequency, get_param};
 use log::debug;
 use std::fmt::{Display, Formatter};
-use crate::error_references::ErrorCode;
 
 const FRAME_HEADER: u8 = 0xA0;
 const RS485_ADDRESS: u8 = 0x01;
@@ -22,7 +22,11 @@ impl Display for FrameError {
                 write!(f, "Response not expected [RX] {:02X?}", response)
             }
             FrameError::InvalidPacket(packet) => write!(f, "Invalid packet [RX] {:02X?}", packet),
-            FrameError::FailedResponse(code, packet) => write!(f, "Failed response with code {:?} and DATA {:02X?}", code, packet),
+            FrameError::FailedResponse(code, packet) => write!(
+                f,
+                "Failed response with code {:?} and DATA {:02X?}",
+                code, packet
+            ),
         }
     }
 }
@@ -72,7 +76,9 @@ impl Display for Command {
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
-            Command::SetDefaultFrequencyRegion(spectrum, min, max) => write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]"),
+            Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
+                write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
+            }
             Command::GetFrequencyRegion => write!(f, "Frequency Region"),
         }
     }
@@ -84,16 +90,30 @@ impl Display for CommandResult {
             CommandResult::GetFirmwareVersion(Ok((major, minor))) => {
                 write!(f, "Firmware Version [{major}.{minor}]")
             }
-            CommandResult::GetFirmwareVersion(Err(err)) => write!(f, "Failed to get Firmware Version: {}", err),
+            CommandResult::GetFirmwareVersion(Err(err)) => {
+                write!(f, "Failed to get Firmware Version: {}", err)
+            }
             CommandResult::GetWorkAntenna(Ok(pos)) => write!(f, "Work Antenna [{pos}]"),
-            CommandResult::GetWorkAntenna(Err(err)) => write!(f, "Failed to get Work Antenna: {}", err),
+            CommandResult::GetWorkAntenna(Err(err)) => {
+                write!(f, "Failed to get Work Antenna: {}", err)
+            }
             CommandResult::GetReaderTemperature(Ok(tmp)) => write!(f, "Temperature [{tmp} °C]"),
-            CommandResult::GetReaderTemperature(Err(err)) => write!(f, "Failed to get Temperature: {}", err),
-            CommandResult::SetDefaultFrequencyRegion(Ok(())) => write!(f, "Frequency Region set successfully"),
-            CommandResult::SetDefaultFrequencyRegion(Err(err)) => write!(f, "Failed to set Frequency Region: {}", err),
-            CommandResult::GetFrequencyRegion(Ok(region)) => write!(f, "Frequency Region [{region}]"),
-            CommandResult::GetFrequencyRegion(Err(err)) => write!(f, "Failed to get Frequency Region: {}", err),
-            CommandResult::Reset(_) => write!(f, "Failed to reset"),  // il reset può solo fallire
+            CommandResult::GetReaderTemperature(Err(err)) => {
+                write!(f, "Failed to get Temperature: {}", err)
+            }
+            CommandResult::SetDefaultFrequencyRegion(Ok(())) => {
+                write!(f, "Frequency Region set successfully")
+            }
+            CommandResult::SetDefaultFrequencyRegion(Err(err)) => {
+                write!(f, "Failed to set Frequency Region: {}", err)
+            }
+            CommandResult::GetFrequencyRegion(Ok(region)) => {
+                write!(f, "Frequency Region [{region}]")
+            }
+            CommandResult::GetFrequencyRegion(Err(err)) => {
+                write!(f, "Failed to get Frequency Region: {}", err)
+            }
+            CommandResult::Reset(_) => write!(f, "Failed to reset"), // il reset può solo fallire
         }
     }
 }
@@ -106,6 +126,15 @@ pub(crate) trait SerializableCommand {
     fn from_byte(raw: Vec<u8>) -> Result<CommandResult, FrameError>
     where
         Self: Sized;
+}
+
+macro_rules! parse_response {
+    ($data:expr, $success_block:expr) => {
+        match ErrorCode::from_hex($data[0]) {
+            ErrorCode::CommandSuccess => $success_block($data),
+            response_error => Err(FrameError::FailedResponse(response_error, $data)),
+        }
+    };
 }
 
 impl SerializableCommand for Command {
@@ -152,41 +181,57 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
-            0x70 => Ok(CommandResult::Reset(build_response_from_code(data))),
-            0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
-            0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
-            0x7B => {
-                let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
-
-                Ok(CommandResult::GetReaderTemperature(Ok(data[1] as f64 * sign)))
-            }
-            0x78 => {
-                Ok(CommandResult::SetDefaultFrequencyRegion(build_response_from_code(data)))
-            },
-            0x79 => {
-                match data[0] {
-                    0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
+            0x70 => Ok(CommandResult::Reset(parse_response!(data, |_| Ok(())))),
+            0x72 => Ok(CommandResult::GetFirmwareVersion(parse_response!(
+                data,
+                |data: Vec<u8>| Ok((data[0], data[1]))
+            ))),
+            0x75 => Ok(CommandResult::GetWorkAntenna(parse_response!(
+                data,
+                |data: Vec<u8>| Ok(data[0] + 1)
+            ))),
+            0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
+                data,
+                |data: Vec<u8>| {
+                    let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
+                    Ok(data[1] as f64 * sign)
+                }
+            ))),
+            0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
+                data,
+                |_| Ok(())
+            ))),
+            0x79 => match data[0] {
+                0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
+                    data,
+                    |data: Vec<u8>| Ok(format!(
                         "FCC {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    )))),
-                    0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
+                    ))
+                ))),
+                0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
+                    data,
+                    |data: Vec<u8>| Ok(format!(
                         "ETSI {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    )))),
-                    0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(Ok(format!(
+                    ))
+                ))),
+                0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
+                    data,
+                    |data: Vec<u8>| Ok(format!(
                         "CHN {}->{}",
                         get_frequency(data[1]),
                         get_frequency(data[2])
-                    )))),
-                    0x04 if length == 9 => {
-                        // todo!("Da completare la versione impostata dall'utente");
-                        Ok(CommandResult::GetFrequencyRegion(Ok("CUSTOM".to_string())))
-                    }
-                    _ => Err(FrameError::ResponseNotExpected(raw.clone())),
+                    ))
+                ))),
+                0x04 if length == 9 => {
+                    // todo!("Da completare la versione impostata dall'utente");
+                    Ok(CommandResult::GetFrequencyRegion(Ok("CUSTOM".to_string())))
                 }
-            }
+                _ => Err(FrameError::ResponseNotExpected(raw.clone())),
+            },
             _ => Err(FrameError::InvalidCommand(format!(
                 "Invalid Response command code: {}",
                 raw[0]
@@ -202,13 +247,6 @@ fn from_bytes_to_utf8(bytes: &Vec<u8>) -> String {
         text.to_string()
     } else {
         "Invalid UTF-8".to_string()
-    }
-}
-
-fn build_response_from_code(data: Vec<u8>) -> Result<(), FrameError> {
-    match ErrorCode::from_hex(data[0]) {
-        ErrorCode::CommandSuccess => Ok(()),
-        response_error => Err(FrameError::FailedResponse(response_error,data)),
     }
 }
 
@@ -280,7 +318,9 @@ mod tests {
         let cmd = Command::from_byte(vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1]).unwrap();
         let expected_version = (70 as u8, 1 as u8);
 
-        assert!(matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version));
+        assert!(
+            matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version)
+        );
 
         let err = Command::from_byte(vec![0x00]);
         assert!(err.is_err());
