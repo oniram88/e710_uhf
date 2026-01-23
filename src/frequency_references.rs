@@ -198,9 +198,9 @@ pub fn get_param(frequency: f64) -> u8 {
 
 #[derive(Clone)]
 pub enum Spectrum {
-    FCC,
-    ETSI,
-    CHN,
+    FCC = 0x01,
+    ETSI = 0x02,
+    CHN = 0x03,
 }
 
 impl Display for Spectrum {
