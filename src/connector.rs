@@ -1,4 +1,4 @@
-use crate::frame::{Command, CommandResult, Frame, FrameError, SerializableCommand};
+use crate::frame::{Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand};
 use crate::frequency_references::Spectrum;
 use log::debug;
 use std::cmp::PartialEq;
@@ -50,8 +50,11 @@ impl<P> Connector<P>
 where
     P: Read + Write,
 {
-    pub fn new(p0: P,number_of_antennas: u8) -> Self {
-        Connector { port: p0, number_of_antennas }
+    pub fn new(p0: P, number_of_antennas: u8) -> Self {
+        Connector {
+            port: p0,
+            number_of_antennas,
+        }
     }
 
     pub fn send_frame(&mut self, frame: &[u8]) -> io::Result<()> {
@@ -131,8 +134,11 @@ where
             )))
         }
     }
-    
-    pub fn check_all_antennas_rf_port_return_loss(&mut self, reference_frequency: f64) -> Result<(), ConnectorError> {
+
+    pub fn check_all_antennas_rf_port_return_loss(
+        &mut self,
+        reference_frequency: f64,
+    ) -> Result<(), ConnectorError> {
         for antenna_id in 0..self.number_of_antennas {
             self.send_command(Command::SetWorkAntenna(antenna_id))?;
             self.read_command()?;
@@ -153,11 +159,11 @@ where
         }
         Ok(())
     }
-    
+
     pub fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
         self.send_command(Command::GetAntConnectionDetector)?;
         let response = self.read_command()?;
-        
+
         if let CommandResult::GetAntConnectionDetector(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE ConnectionDetector value: {:?}", p0);
@@ -171,7 +177,23 @@ where
                 p0
             )))
         }
-        
     }
-    
+
+    pub fn set_rf_link_profile_if_not(&mut self, p0: RfLinkProfile) -> Result<(), ConnectorError> {
+        self.send_command(Command::GetRfLinkProfile)?;
+        let response = self.read_command()?;
+        if let CommandResult::GetRfLinkProfile(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE RfLinkProfile to value: {:?}", p0);
+                self.send_command(Command::SetRfLinkProfile(p0.clone()))?;
+                self.read_command()?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to set RfLinkProfile to desired settings {:?}",
+                p0
+            )))
+        }
+    }
 }

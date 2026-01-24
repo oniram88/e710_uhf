@@ -35,6 +35,41 @@ impl Display for FrameError {
 
 impl std::error::Error for FrameError {}
 
+/// [RfLinkProfile]
+/// | ProfileID | Descrizione                                                            |
+/// | --------- | ----------------------------------------------------------------------- |
+/// | `0xD0`    | Profile 0: Tari 25µs, **FM0**, 40 kHz                                   |
+/// | `0xD1`    | Profile 1: Tari 25µs, **Miller 4**, 250 kHz (**default / consigliato**) |
+/// | `0xD2`    | Profile 2: Tari 25µs, **Miller 4**, 300 kHz                             |
+/// | `0xD3`    | Profile 3: Tari 6.25µs, **FM0**, 400 kHz                                |
+/// 🔸 Frequenza (40KHz / 250KHz / 300KHz / 400KHz)
+///
+/// È la velocità del link:
+/// più alta → più tag/sec
+/// più bassa → più stabilità
+///
+#[derive(Clone,Debug,PartialEq)]
+#[repr(u8)]
+pub enum RfLinkProfile {
+    Tari25usFM0KHz40 = 0xD0,
+    Tari25usMiller4KHz250 = 0xD1,
+    Tari25usMiller4KHz300 = 0xD2,
+    Tari625usFM0KHz400 = 0xD3,
+}
+
+
+impl RfLinkProfile {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0xD0 => Some(Self::Tari25usFM0KHz40),
+            0xD1 => Some(Self::Tari25usMiller4KHz250),
+            0xD2 => Some(Self::Tari25usMiller4KHz300),
+            0xD3 => Some(Self::Tari625usFM0KHz400),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum Command {
     Reset,
@@ -65,8 +100,8 @@ pub enum Command {
     // SetTemporaryOutputPower,
     // SetReaderIdentifier,
     // GetReaderIdentifier,
-    // SetRfLinkProfile,
-    // GetRfLinkProfile,
+    SetRfLinkProfile(RfLinkProfile),
+    GetRfLinkProfile,
     /// [GetRfPortReturnLoss] il valore impostato è la frequenza di controllo, dovrebbe essere
     /// la frequenza centrale di lavoro. ES. EU 865–868 MHz -> frequenza di check 866 MHz
     GetRfPortReturnLoss(f64),
@@ -94,6 +129,8 @@ pub enum CommandResult {
     ///         the value is the return loss of the antenna port.
     ///         The unit is dB.
     GetAntConnectionDetector(Result<u8, FrameError>),
+    SetRfLinkProfile(Result<(), FrameError>),
+    GetRfLinkProfile(Result<RfLinkProfile,FrameError>),
     /// [GetRfPortReturnLoss] è il risultato del calcolo rispetto alla frequenza passata.
     /// il valore di ritorno è il VSWR calcolato dal ReturnLoss ricevuto dal device
     /// VSWR è solo un altro modo di leggere lo stesso fenomeno.
@@ -139,6 +176,8 @@ impl Display for Command {
                 write!(f, "Set Antenna Connection Detector to {v}")
             }
             Command::GetAntConnectionDetector => write!(f, "Antenna Connection Detector"),
+            Command::SetRfLinkProfile(profile) => write!(f, "Set RF Link Profile to {:?}", profile),
+            Command::GetRfLinkProfile => write!(f, "Get RF Link Profile"),
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 write!(
                     f,
@@ -188,16 +227,15 @@ impl Display for CommandResult {
             CommandResult::GetFrequencyRegion(Ok((spectrum, min, max))) => {
                 write!(f, "Frequency Region [{spectrum} [{min} -> {max}]")
             }
+            CommandResult::GetFrequencyRegion(Err(err)) => {
+                write!(f, "Failed to get Frequency Region: {}", err)
+            }
 
             CommandResult::SetAntConnectionDetector(Ok(())) => {
                 write!(f, "Antenna Connection Detector set successfully")
             }
             CommandResult::SetAntConnectionDetector(Err(err)) => {
                 write!(f, "Failed to set Antenna Connection Detector: {}", err)
-            }
-
-            CommandResult::GetFrequencyRegion(Err(err)) => {
-                write!(f, "Failed to get Frequency Region: {}", err)
             }
             CommandResult::GetAntConnectionDetector(Ok(v)) => {
                 if *v == 0x00 {
@@ -209,6 +247,10 @@ impl Display for CommandResult {
             CommandResult::GetAntConnectionDetector(Err(err)) => {
                 write!(f, "Failed to get Connection Detector: {}", err)
             }
+            CommandResult::SetRfLinkProfile(Ok(())) => write!(f, "RF Link Profile set successfully"),
+            CommandResult::SetRfLinkProfile(Err(err)) => write!(f, "Failed to set RF Link Profile: {}", err),
+            CommandResult::GetRfLinkProfile(Ok(profile)) => write!(f, "RF Link Profile: {:?}", profile),
+            CommandResult::GetRfLinkProfile(Err(err)) => write!(f, "Failed to get RF Link Profile: {}", err),
             CommandResult::GetRfPortReturnLoss(Ok(v)) => {
                 write!(
                     f,
@@ -295,6 +337,8 @@ impl SerializableCommand for Command {
                 vec![0x62, *v]
             }
             Command::GetAntConnectionDetector => vec![0x63],
+            Command::SetRfLinkProfile(profile) => {vec![0x69,profile.clone() as u8]}
+            Command::GetRfLinkProfile => vec![0x6A],
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 vec![0x7E, get_param(*reference_frequency)]
             }
@@ -327,6 +371,19 @@ impl SerializableCommand for Command {
         match raw_command {
             0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(data))),
             0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
+            0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
+            0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
+                data,
+                (0xD0,0xD3),
+                |data: Vec<u8>| {
+                    RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
+                        FrameError::InvalidCommand(format!(
+                            "Invalid RF link profile: 0x{:02X}",
+                            data[0]
+                        ))
+                    })
+                }
+            ))),
             0x70 => Ok(CommandResult::Reset(parse_response!(data))),
             0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
             0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),

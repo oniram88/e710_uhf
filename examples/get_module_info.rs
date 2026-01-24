@@ -1,5 +1,5 @@
 use e710_uhf::connector::Connector;
-use e710_uhf::frame::Command;
+use e710_uhf::frame::{Command, RfLinkProfile};
 use e710_uhf::frequency_references::{get_param, Spectrum};
 use std::net::TcpStream;
 use std::thread::sleep;
@@ -48,6 +48,9 @@ fn main() -> std::io::Result<()> {
 
     println!("\n\n== Controllo potenza:");
     connector.set_output_power_if_not(vec![15]).unwrap();
+
+    println!("\n\n== Controllo Rf Link Profile:");
+    connector.set_rf_link_profile_if_not(RfLinkProfile::Tari25usMiller4KHz250).unwrap();
 
     println!("\n\n== Controllo tutte le antenne:");
     connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
