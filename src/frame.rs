@@ -59,7 +59,9 @@ pub enum Command {
     // GetReaderIdentifier,
     // SetRfLinkProfile,
     // GetRfLinkProfile,
-    // GetRfPortReturnLoss
+    /// [GetRfPortReturnLoss] il valore impostato è la frequenza di controllo, dovrebbe essere
+    /// la frequenza centrale di lavoro. ES. EU 865–868 MHz -> frequenza di check 866 MHz
+    GetRfPortReturnLoss(f64),
 }
 
 #[derive(Debug)]
@@ -75,6 +77,25 @@ pub enum CommandResult {
     GetOutputPower(Result<Vec<u8>, FrameError>),
     SetDefaultFrequencyRegion(Result<(), FrameError>),
     GetFrequencyRegion(Result<(Spectrum, f64, f64), FrameError>),
+    /// [GetRfPortReturnLoss] è il risultato del calcolo rispetto alla frequenza passata.
+    /// il valore di ritorno è il VSWR calcolato dal ReturnLoss ricevuto dal device
+    /// VSWR è solo un altro modo di leggere lo stesso fenomeno.
+    ///
+    /// | Return Loss (dB) | VSWR  | Interpretazione    |
+    /// | ---------------- | ----- | ------------------ |
+    /// | 0 dB             | ∞     | antenna scollegata |
+    /// | 3 dB             | ~6.0  | pessima            |
+    /// | 6 dB             | ~3.0  | accettabile        |
+    /// | 10 dB            | ~1.9  | buona              |
+    /// | 15 dB            | ~1.4  | molto buona        |
+    /// | 20 dB            | ~1.22 | eccellente         |
+    ///
+    ///  📌 In RFID:
+    ///
+    ///  VSWR ≤ 3 → generalmente OK
+    ///  VSWR ≤ 2 → buono
+    ///  VSWR > 5 → problemi
+    GetRfPortReturnLoss(Result<f64, FrameError>),
 }
 
 impl Display for Command {
@@ -84,18 +105,24 @@ impl Display for Command {
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
-            Command::SetOutputPower(v) =>{
+            Command::SetOutputPower(v) => {
                 if v.len() == 1 {
-                    write!(f, "Set Output power globaly to {}",v[0])
-                }else{
-                    write!(f, "Set Output power for single antenna to {:?}",v)
+                    write!(f, "Set Output power globaly to {}", v[0])
+                } else {
+                    write!(f, "Set Output power for single antenna to {:?}", v)
                 }
-            },
-                Command::GetOutputPower => write!(f, "Output Power"),
+            }
+            Command::GetOutputPower => write!(f, "Output Power"),
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
             }
             Command::GetFrequencyRegion => write!(f, "Frequency Region"),
+            Command::GetRfPortReturnLoss(reference_frequency) => {
+                write!(
+                    f,
+                    "Rf Port Return Loss setted with reference frequency of: {reference_frequency}"
+                )
+            }
         }
     }
 }
@@ -136,6 +163,20 @@ impl Display for CommandResult {
             CommandResult::GetFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to get Frequency Region: {}", err)
             }
+            CommandResult::GetRfPortReturnLoss(Ok(v)) => {
+                write!(
+                    f,
+                    "Rf Port VSWR[{v}]
+                    VSWR > 5 → problems
+                    VSWR ≤ 3 → OK
+                    VSWR ≤ 2 → good
+                    VSWR ≤ 1.5 → very good
+                "
+                )
+            }
+            CommandResult::GetRfPortReturnLoss(Err(err)) => {
+                write!(f, "Failed to get Rf Port Return Loss: {}", err)
+            }
         }
     }
 }
@@ -157,6 +198,15 @@ macro_rules! parse_response {
             response_error => Err(FrameError::FailedResponse(response_error, $data)),
         }
     };
+
+    ($data:expr, ($min:expr, $max:expr), $success_block:expr) => {
+        if $data[0] >= $min && $data[0] <= $max {
+            $success_block($data)
+        } else {
+            parse_response!($data, $success_block)
+        }
+    };
+
     ($data:expr, $success_block:expr) => {
         if $data.len() == 1 {
             match ErrorCode::from_hex($data[0]) {
@@ -192,6 +242,7 @@ impl SerializableCommand for Command {
                 v
             }
             Command::GetFrequencyRegion => vec![0x79],
+            Command::GetRfPortReturnLoss(reference_frequency) => vec![0x7E, get_param(*reference_frequency)],
         }
     }
 
@@ -269,6 +320,19 @@ impl SerializableCommand for Command {
                 }
                 _ => Err(FrameError::ResponseNotExpected(raw.clone())),
             },
+            0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
+                data,
+                (0x12, 0x19),
+                |data: Vec<u8>| {
+                    println!("RF Port Return Loss: {:#?}", data);
+
+                    let rl_db = data[0] as f64;
+                    let x = 10f64.powf(rl_db / 20.0);
+                    let vswr = (x + 1.0) / (x - 1.0);
+
+                    Ok(vswr)
+                }
+            ))),
             _ => Err(FrameError::InvalidCommand(format!(
                 "Invalid Response command code: {}",
                 raw[0]

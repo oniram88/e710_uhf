@@ -1,6 +1,6 @@
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::Command;
-use e710_uhf::frequency_references::Spectrum;
+use e710_uhf::frequency_references::{get_param, Spectrum};
 use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
@@ -23,7 +23,8 @@ fn main() -> std::io::Result<()> {
     let commands = vec![
         Command::GetFirmwareVersion,
         Command::GetWorkAntenna,
-        Command::GetReaderTemperature
+        Command::GetReaderTemperature,
+        Command::GetRfPortReturnLoss(866.0)
     ];
 
     // Ciclo sui comandi
