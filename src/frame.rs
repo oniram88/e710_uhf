@@ -39,7 +39,9 @@ pub enum Command {
     // SetUartBaudRate,
     GetFirmwareVersion,
     // SetReaderAddress,
-    // SetWorkAntenna,
+    /// [SetWorkAntenna] Imposta la posizione dell'antenna di lavoro,
+    /// 0 index base => antenna 1, posizione 0
+    SetWorkAntenna(u8),
     GetWorkAntenna,
     /// [SetOutputPower] Imposta la potenza di output delle antenne,
     /// con un solo valore andremo ad impostare su tutte le antenne la medesima potenza
@@ -68,6 +70,7 @@ pub enum Command {
 pub enum CommandResult {
     Reset(Result<(), FrameError>),
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
+    SetWorkAntenna(Result<(), FrameError>),
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
     GetReaderTemperature(Result<f64, FrameError>),
     /// [GetOutputPower]
@@ -102,6 +105,7 @@ impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Command::Reset => write!(f, "Reset"),
+            Command::SetWorkAntenna(pos) => write!(f, "Set Work Antenna to {}", pos),
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
@@ -138,6 +142,10 @@ impl Display for CommandResult {
             CommandResult::GetFirmwareVersion(Err(err)) => {
                 write!(f, "Failed to get Firmware Version: {}", err)
             }
+
+            CommandResult::SetWorkAntenna(Ok(())) => write!(f, "Set Working Antenna set successfully"),
+            CommandResult::SetWorkAntenna(Err(err)) => write!(f, "Failed to set Antenna: {}", err),
+
             CommandResult::GetWorkAntenna(Ok(pos)) => write!(f, "Work Antenna [{pos}]"),
             CommandResult::GetWorkAntenna(Err(err)) => {
                 write!(f, "Failed to get Work Antenna: {}", err)
@@ -225,6 +233,9 @@ impl SerializableCommand for Command {
     fn to_bytes(&self) -> Vec<u8> {
         match self {
             Command::Reset => vec![0xA0],
+            Command::SetWorkAntenna(index) =>{
+                vec![0x74, *index]
+            }
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
             Command::GetReaderTemperature => vec![0x7B],
@@ -272,6 +283,7 @@ impl SerializableCommand for Command {
         match raw_command {
             0x70 => Ok(CommandResult::Reset(parse_response!(data))),
             0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+            0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
             0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
             0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
                 data,

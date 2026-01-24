@@ -17,7 +17,7 @@ fn main() -> std::io::Result<()> {
     println!("Connesso con successo!");
 
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(stream);
+    let mut connector = Connector::new(stream,8);
 
     // Vettore di comandi da eseguire
     let commands = vec![
