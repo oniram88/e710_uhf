@@ -10,6 +10,7 @@ where
     P: Read + Write,
 {
     port: P,
+    number_of_antennas: u8,
 }
 
 #[derive(Debug)]
@@ -49,8 +50,8 @@ impl<P> Connector<P>
 where
     P: Read + Write,
 {
-    pub fn new(p0: P) -> Self {
-        Connector { port: p0 }
+    pub fn new(p0: P,number_of_antennas: u8) -> Self {
+        Connector { port: p0, number_of_antennas }
     }
 
     pub fn send_frame(&mut self, frame: &[u8]) -> io::Result<()> {
@@ -130,4 +131,27 @@ where
             )))
         }
     }
+    
+    pub fn check_all_antennas_rf_port_return_loss(&mut self, reference_frequency: f64) -> Result<(), ConnectorError> {
+        for antenna_id in 0..self.number_of_antennas {
+            self.send_command(Command::SetWorkAntenna(antenna_id))?;
+            self.read_command()?;
+
+            self.send_command(Command::GetRfPortReturnLoss(reference_frequency))?;
+            let response = self.read_command()?;
+
+            if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
+                match vswr_res {
+                    Ok(vswr) => {
+                        println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
+                    }
+                    Err(e) => {
+                        println!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    
 }

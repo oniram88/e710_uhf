@@ -12,6 +12,7 @@ pub enum FrameError {
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
     FailedResponse(ErrorCode, Vec<u8>),
+    AntennaNotConnected
 }
 
 impl Display for FrameError {
@@ -27,6 +28,7 @@ impl Display for FrameError {
                 "Failed response with code {:?} and DATA {:02X?}",
                 code, packet
             ),
+            FrameError::AntennaNotConnected => write!(f, "Antenna not connected"),
         }
     }
 }
@@ -143,7 +145,9 @@ impl Display for CommandResult {
                 write!(f, "Failed to get Firmware Version: {}", err)
             }
 
-            CommandResult::SetWorkAntenna(Ok(())) => write!(f, "Set Working Antenna set successfully"),
+            CommandResult::SetWorkAntenna(Ok(())) => {
+                write!(f, "Set Working Antenna set successfully")
+            }
             CommandResult::SetWorkAntenna(Err(err)) => write!(f, "Failed to set Antenna: {}", err),
 
             CommandResult::GetWorkAntenna(Ok(pos)) => write!(f, "Work Antenna [{pos}]"),
@@ -233,7 +237,7 @@ impl SerializableCommand for Command {
     fn to_bytes(&self) -> Vec<u8> {
         match self {
             Command::Reset => vec![0xA0],
-            Command::SetWorkAntenna(index) =>{
+            Command::SetWorkAntenna(index) => {
                 vec![0x74, *index]
             }
             Command::GetWorkAntenna => vec![0x75],
@@ -253,7 +257,9 @@ impl SerializableCommand for Command {
                 v
             }
             Command::GetFrequencyRegion => vec![0x79],
-            Command::GetRfPortReturnLoss(reference_frequency) => vec![0x7E, get_param(*reference_frequency)],
+            Command::GetRfPortReturnLoss(reference_frequency) => {
+                vec![0x7E, get_param(*reference_frequency)]
+            }
         }
     }
 
@@ -334,15 +340,19 @@ impl SerializableCommand for Command {
             },
             0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
                 data,
-                (0x12, 0x19),
+                (0x00, 0x19),
                 |data: Vec<u8>| {
-                    println!("RF Port Return Loss: {:#?}", data);
+                    println!("RF Port Return Loss: {:?}", data);
 
                     let rl_db = data[0] as f64;
-                    let x = 10f64.powf(rl_db / 20.0);
-                    let vswr = (x + 1.0) / (x - 1.0);
+                    if rl_db == 0.0 {
+                        Err(FrameError::AntennaNotConnected)
+                    } else {
+                        let x = 10f64.powf(rl_db / 20.0);
+                        let vswr = (x + 1.0) / (x - 1.0);
 
-                    Ok(vswr)
+                        Ok(vswr)
+                    }
                 }
             ))),
             _ => Err(FrameError::InvalidCommand(format!(

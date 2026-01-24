@@ -38,13 +38,16 @@ fn main() -> std::io::Result<()> {
         sleep(Duration::from_secs(1));
     }
 
-    println!("Controllo frequenza:");
+    println!("\n\n== Controllo frequenza:");
     connector
         .set_frequency_if_not(Spectrum::ETSI, 865.0, 868.0)
         .unwrap();
 
-    println!("Controllo potenza:");
+    println!("\n\n== Controllo potenza:");
     connector.set_output_power_if_not(vec![21]).unwrap();
+
+    println!("\n\n== Controllo tutte le antenne:");
+    connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
 
     sleep(Duration::from_secs(4));
 
