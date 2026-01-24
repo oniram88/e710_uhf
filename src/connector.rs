@@ -1,9 +1,9 @@
-use std::cmp::PartialEq;
 use crate::frame::{Command, CommandResult, Frame, FrameError, SerializableCommand};
+use crate::frequency_references::Spectrum;
 use log::debug;
+use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
-use crate::frequency_references::Spectrum;
 
 pub struct Connector<P>
 where
@@ -88,20 +88,46 @@ where
         Ok(Command::from_byte(response)?)
     }
 
-    pub fn set_frequency_if_not(&mut self, p0: Spectrum, p1: f64, p2: f64) -> Result<(), ConnectorError> {
-
+    pub fn set_frequency_if_not(
+        &mut self,
+        p0: Spectrum,
+        p1: f64,
+        p2: f64,
+    ) -> Result<(), ConnectorError> {
         self.send_command(Command::GetFrequencyRegion)?;
         let response = self.read_command()?;
 
         if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
             if region.0 != p0 || region.1 != p1 || region.2 != p2 {
-                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}",p0, p1, p2);
+                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
                 self.send_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
                 self.read_command()?;
             }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
+                p0, p1, p2
+            )))
         }
-
-        Ok(())
     }
 
+    pub fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError> {
+        self.send_command(Command::GetOutputPower)?;
+        let response = self.read_command()?;
+
+        if let CommandResult::GetOutputPower(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE OUTPUT POWER: {:?}", p0);
+                self.send_command(Command::SetOutputPower(p0.clone()))?;
+                self.read_command()?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to check Output Power for new settings {:?}",
+                p0
+            )))
+        }
+    }
 }

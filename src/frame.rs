@@ -41,7 +41,10 @@ pub enum Command {
     // SetReaderAddress,
     // SetWorkAntenna,
     GetWorkAntenna,
-    //SetOutputPower(Vec<u16>),
+    /// [SetOutputPower] Imposta la potenza di output delle antenne,
+    /// con un solo valore andremo ad impostare su tutte le antenne la medesima potenza
+    /// con più valori ogni antenna avrà la sua potenza distinta
+    SetOutputPower(Vec<u8>),
     GetOutputPower,
     SetDefaultFrequencyRegion(Spectrum, f64, f64), // use default frequencies
     GetFrequencyRegion,
@@ -81,7 +84,14 @@ impl Display for Command {
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
-            Command::GetOutputPower => write!(f, "Output Power"),
+            Command::SetOutputPower(v) =>{
+                if v.len() == 1 {
+                    write!(f, "Set Output power globaly to {}",v[0])
+                }else{
+                    write!(f, "Set Output power for single antenna to {:?}",v)
+                }
+            },
+                Command::GetOutputPower => write!(f, "Output Power"),
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
             }
@@ -168,6 +178,11 @@ impl SerializableCommand for Command {
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
             Command::GetReaderTemperature => vec![0x7B],
+            Command::SetOutputPower(v) => {
+                let mut out = vec![0x76];
+                out.extend(v);
+                out
+            }
             Command::GetOutputPower => vec![0x77],
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 let mut v = vec![0x78];
@@ -214,6 +229,7 @@ impl SerializableCommand for Command {
                     Ok(data[1] as f64 * sign)
                 }
             ))),
+            0x76 => Ok(CommandResult::Reset(parse_response!(data))),
             0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
             0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
                 data
