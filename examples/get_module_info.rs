@@ -28,6 +28,7 @@ fn main() -> std::io::Result<()> {
             Command::GetFirmwareVersion,
             Command::GetWorkAntenna,
             Command::GetReaderTemperature,
+            Command::GetOutputPower,
         ];
 
         // Ciclo sui comandi

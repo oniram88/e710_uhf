@@ -41,8 +41,8 @@ pub enum Command {
     // SetReaderAddress,
     // SetWorkAntenna,
     GetWorkAntenna,
-    // SetOutputPower,
-    // GetOutputPower,
+    //SetOutputPower(Vec<u16>),
+    GetOutputPower,
     SetDefaultFrequencyRegion(Spectrum, f64, f64), // use default frequencies
     GetFrequencyRegion,
     // SetBeeperMode,
@@ -65,6 +65,11 @@ pub enum CommandResult {
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
     GetReaderTemperature(Result<f64, FrameError>),
+    /// [GetOutputPower]
+    /// Ritorna l'array della potenza di output delle antenne,
+    /// nel caso di singolo risultato vuol dire che sono configurate
+    /// tutte allo stesso modo, valori da 0 to 33(0x00 – 0x21)
+    GetOutputPower(Result<Vec<u8>, FrameError>),
     SetDefaultFrequencyRegion(Result<(), FrameError>),
     GetFrequencyRegion(Result<(Spectrum, f64, f64), FrameError>),
 }
@@ -76,6 +81,7 @@ impl Display for Command {
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
             Command::GetReaderTemperature => write!(f, "Temperature"),
+            Command::GetOutputPower => write!(f, "Output Power"),
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
             }
@@ -87,6 +93,8 @@ impl Display for Command {
 impl Display for CommandResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CommandResult::Reset(_) => write!(f, "Failed to reset"), // il reset può solo fallire
+
             CommandResult::GetFirmwareVersion(Ok((major, minor))) => {
                 write!(f, "Firmware Version [{major}.{minor}]")
             }
@@ -101,6 +109,11 @@ impl Display for CommandResult {
             CommandResult::GetReaderTemperature(Err(err)) => {
                 write!(f, "Failed to get Temperature: {}", err)
             }
+            CommandResult::GetOutputPower(Ok(v)) => write!(f, "Antenna output power {:#?}", v),
+            CommandResult::GetOutputPower(Err(e)) => {
+                write!(f, "Failed to get Output Antenna Power: {}", e)
+            }
+
             CommandResult::SetDefaultFrequencyRegion(Ok(())) => {
                 write!(f, "Frequency Region set successfully")
             }
@@ -113,7 +126,6 @@ impl Display for CommandResult {
             CommandResult::GetFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to get Frequency Region: {}", err)
             }
-            CommandResult::Reset(_) => write!(f, "Failed to reset"), // il reset può solo fallire
         }
     }
 }
@@ -136,7 +148,7 @@ macro_rules! parse_response {
         }
     };
     ($data:expr, $success_block:expr) => {
-        if $data.len() == 4 {
+        if $data.len() == 1 {
             match ErrorCode::from_hex($data[0]) {
                 ErrorCode::CommandSuccess => $success_block($data),
                 response_error => Err(FrameError::FailedResponse(response_error, $data)),
@@ -156,6 +168,7 @@ impl SerializableCommand for Command {
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
             Command::GetReaderTemperature => vec![0x7B],
+            Command::GetOutputPower => vec![0x77],
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 let mut v = vec![0x78];
                 v.push(spectrum.clone() as u8);
@@ -201,6 +214,7 @@ impl SerializableCommand for Command {
                     Ok(data[1] as f64 * sign)
                 }
             ))),
+            0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
             0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
                 data
             ))),
