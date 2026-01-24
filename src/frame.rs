@@ -12,7 +12,7 @@ pub enum FrameError {
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
     FailedResponse(ErrorCode, Vec<u8>),
-    AntennaNotConnected
+    AntennaNotConnected,
 }
 
 impl Display for FrameError {
@@ -56,8 +56,12 @@ pub enum Command {
     GetReaderTemperature,
     // ReadGpioValue,
     // WriteGpioValue,
-    // SetAntConnectionDetector
-    // GetAntConnectionDetector,
+    /// [SetAntConnectionDetector]
+    /// Imposta il valore per cui in automatico una porta viene disattivata.
+    /// con valore 0x00 il check viene disattivato
+    /// il valore di default è 0x03
+    SetAntConnectionDetector(u8),
+    GetAntConnectionDetector,
     // SetTemporaryOutputPower,
     // SetReaderIdentifier,
     // GetReaderIdentifier,
@@ -82,6 +86,14 @@ pub enum CommandResult {
     GetOutputPower(Result<Vec<u8>, FrameError>),
     SetDefaultFrequencyRegion(Result<(), FrameError>),
     GetFrequencyRegion(Result<(Spectrum, f64, f64), FrameError>),
+    SetAntConnectionDetector(Result<(), FrameError>),
+    /// [GetAntConnectionDetector]
+    /// The result is the Return Loss sensitivity
+    /// 0x00 Connection detector is closed.
+    /// >= 0x00 The sensitivity of the antenna detector,
+    ///         the value is the return loss of the antenna port.
+    ///         The unit is dB.
+    GetAntConnectionDetector(Result<u8, FrameError>),
     /// [GetRfPortReturnLoss] è il risultato del calcolo rispetto alla frequenza passata.
     /// il valore di ritorno è il VSWR calcolato dal ReturnLoss ricevuto dal device
     /// VSWR è solo un altro modo di leggere lo stesso fenomeno.
@@ -123,6 +135,10 @@ impl Display for Command {
                 write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
             }
             Command::GetFrequencyRegion => write!(f, "Frequency Region"),
+            Command::SetAntConnectionDetector(v) => {
+                write!(f, "Set Antenna Connection Detector to {v}")
+            }
+            Command::GetAntConnectionDetector => write!(f, "Antenna Connection Detector"),
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 write!(
                     f,
@@ -172,8 +188,26 @@ impl Display for CommandResult {
             CommandResult::GetFrequencyRegion(Ok((spectrum, min, max))) => {
                 write!(f, "Frequency Region [{spectrum} [{min} -> {max}]")
             }
+
+            CommandResult::SetAntConnectionDetector(Ok(())) => {
+                write!(f, "Antenna Connection Detector set successfully")
+            }
+            CommandResult::SetAntConnectionDetector(Err(err)) => {
+                write!(f, "Failed to set Antenna Connection Detector: {}", err)
+            }
+
             CommandResult::GetFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to get Frequency Region: {}", err)
+            }
+            CommandResult::GetAntConnectionDetector(Ok(v)) => {
+                if *v == 0x00 {
+                    write!(f, "Antenna Connection Detector is closed")
+                } else {
+                    write!(f, "Antenna Connection Detector [{v}]")
+                }
+            }
+            CommandResult::GetAntConnectionDetector(Err(err)) => {
+                write!(f, "Failed to get Connection Detector: {}", err)
             }
             CommandResult::GetRfPortReturnLoss(Ok(v)) => {
                 write!(
@@ -257,6 +291,10 @@ impl SerializableCommand for Command {
                 v
             }
             Command::GetFrequencyRegion => vec![0x79],
+            Command::SetAntConnectionDetector(v) => {
+                vec![0x62, *v]
+            }
+            Command::GetAntConnectionDetector => vec![0x63],
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 vec![0x7E, get_param(*reference_frequency)]
             }
@@ -287,6 +325,8 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
+            0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(data))),
+            0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
             0x70 => Ok(CommandResult::Reset(parse_response!(data))),
             0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
             0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),

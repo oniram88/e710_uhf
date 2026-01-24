@@ -33,10 +33,13 @@ fn main() -> std::io::Result<()> {
 
         // Lettura della risposta
         let response = connector.read_command().unwrap();
-        println!("Risposta ricevuta: {response}");
+        println!("Risposta ricevuta: {response}\n");
 
         sleep(Duration::from_secs(1));
     }
+
+    println!("\n\n== Controllo antenna detection:");
+    connector.set_ant_connection_detector_if_not(0x03).unwrap();
 
     println!("\n\n== Controllo frequenza:");
     connector

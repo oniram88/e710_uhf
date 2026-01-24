@@ -154,4 +154,24 @@ where
         Ok(())
     }
     
+    pub fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
+        self.send_command(Command::GetAntConnectionDetector)?;
+        let response = self.read_command()?;
+        
+        if let CommandResult::GetAntConnectionDetector(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE ConnectionDetector value: {:?}", p0);
+                self.send_command(Command::SetAntConnectionDetector(p0.clone()))?;
+                self.read_command()?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to set Ant connection Error to desired settings {:?}",
+                p0
+            )))
+        }
+        
+    }
+    
 }
