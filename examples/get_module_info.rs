@@ -47,7 +47,7 @@ fn main() -> std::io::Result<()> {
         .unwrap();
 
     println!("\n\n== Controllo potenza:");
-    connector.set_output_power_if_not(vec![21]).unwrap();
+    connector.set_output_power_if_not(vec![15]).unwrap();
 
     println!("\n\n== Controllo tutte le antenne:");
     connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
