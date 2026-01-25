@@ -13,6 +13,10 @@ where
 {
     port: P,
     number_of_antennas: u8,
+    /// Potenza di lavoro da 0 a 33 db
+    /// con un solo valore andremo ad impostare su tutte le antenne la medesima potenza
+    /// con più valori ogni antenna avrà la sua potenza distinta
+    output_power: Vec<u8>,
     working_freq_setup: (Spectrum, f64, f64),
 }
 
@@ -55,11 +59,14 @@ impl<P> Connector<P>
 where
     P: Read + Write,
 {
-    pub fn new(p0: P, number_of_antennas: u8, working_freq_setup: (Spectrum, f64, f64)) -> Self {
+    pub fn new(p0: P, number_of_antennas: u8,
+               output_power: Vec<u8>,
+               working_freq_setup: (Spectrum, f64, f64)) -> Self {
         Connector {
             port: p0,
             number_of_antennas,
             working_freq_setup,
+            output_power
         }
     }
 
@@ -110,7 +117,7 @@ where
         )?;
 
         println!("\n\n== Controllo potenza:");
-        self.set_output_power_if_not(vec![21])?; // TODO configurable
+        self.set_output_power_if_not(self.output_power.clone())?;
 
         println!("\n\n== Controllo Rf Link Profile:");
         self.set_rf_link_profile_if_not(RfLinkProfile::Tari25usMiller4KHz250)?; //TODO configurable
@@ -193,7 +200,7 @@ where
 
     ///
     /// Return VSWR for every antenna
-    /// 
+    ///
     pub fn get_statistic_to_all_antennas(&mut self) -> Result<Vec<(u8, f64)>, ConnectorError> {
         let mut antennas: Vec<(u8, f64)> = vec![];
 

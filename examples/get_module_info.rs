@@ -17,8 +17,7 @@ fn main() -> std::io::Result<()> {
     println!("Connesso con successo!");
 
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(stream, 8, (Spectrum::ETSI, 865.0, 868.0));
-
+    let mut connector = Connector::new(stream, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
 
     connector.setup_reader().unwrap();
 
