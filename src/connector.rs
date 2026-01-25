@@ -1,4 +1,6 @@
-use crate::frame::{Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand};
+use crate::frame::{
+    Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand, Session, Target,
+};
 use crate::frequency_references::Spectrum;
 use log::debug;
 use std::cmp::PartialEq;
@@ -11,6 +13,7 @@ where
 {
     port: P,
     number_of_antennas: u8,
+    working_freq_setup: (Spectrum, f64, f64),
 }
 
 #[derive(Debug)]
@@ -20,6 +23,7 @@ pub enum ConnectorError {
     FailedSetting(String),
     SerialRead(String),
     Frame(FrameError),
+    TagReadError(String),
 }
 
 impl fmt::Display for ConnectorError {
@@ -30,6 +34,7 @@ impl fmt::Display for ConnectorError {
             ConnectorError::SerialRead(msg) => write!(f, "Serial read error: {}", msg),
             ConnectorError::FailedSetting(msg) => write!(f, "Failed Setting: {}", msg),
             ConnectorError::Frame(err) => write!(f, "Frame error: {}", err),
+            ConnectorError::TagReadError(msg) => write!(f, "Tag Read Error: {}", msg),
         }
     }
 }
@@ -50,10 +55,11 @@ impl<P> Connector<P>
 where
     P: Read + Write,
 {
-    pub fn new(p0: P, number_of_antennas: u8) -> Self {
+    pub fn new(p0: P, number_of_antennas: u8, working_freq_setup: (Spectrum, f64, f64)) -> Self {
         Connector {
             port: p0,
             number_of_antennas,
+            working_freq_setup,
         }
     }
 
@@ -90,6 +96,26 @@ where
                 .join(",")
         );
         Ok(Command::from_byte(response)?)
+    }
+
+    pub fn setup_reader(&mut self) -> Result<(), ConnectorError> {
+        println!("\n\n== Controllo antenna detection:");
+        self.set_ant_connection_detector_if_not(0x03).unwrap(); // TODO configurable
+
+        println!("\n\n== Controllo frequenza:");
+        self.set_frequency_if_not(
+            self.working_freq_setup.0.clone(),
+            self.working_freq_setup.1,
+            self.working_freq_setup.2,
+        )?;
+
+        println!("\n\n== Controllo potenza:");
+        self.set_output_power_if_not(vec![21])?; // TODO configurable
+
+        println!("\n\n== Controllo Rf Link Profile:");
+        self.set_rf_link_profile_if_not(RfLinkProfile::Tari25usMiller4KHz250)?; //TODO configurable
+
+        Ok(())
     }
 
     pub fn set_frequency_if_not(
@@ -135,20 +161,53 @@ where
         }
     }
 
-    pub fn check_all_antennas_rf_port_return_loss(
-        &mut self,
-        reference_frequency: f64,
-    ) -> Result<(), ConnectorError> {
+    pub fn reference_frequency(&self) -> f64 {
+        ((self.working_freq_setup.1 + self.working_freq_setup.2) / 2.0).trunc()
+    }
+
+    // pub fn check_all_antennas_rf_port_return_loss(
+    //     &mut self,
+    //     reference_frequency: f64,
+    // ) -> Result<(), ConnectorError> {
+    //     for antenna_id in 0..self.number_of_antennas {
+    //         self.send_command(Command::SetWorkAntenna(antenna_id))?;
+    //         self.read_command()?;
+    //
+    //         self.send_command(Command::GetRfPortReturnLoss(reference_frequency))?;
+    //         let response = self.read_command()?;
+    //
+    //         if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
+    //             match vswr_res {
+    //                 Ok(vswr) => {
+    //                     println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
+    //                 }
+    //                 Err(e) => {
+    //                     println!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
+
+
+    ///
+    /// Return VSWR for every antenna
+    /// 
+    pub fn get_statistic_to_all_antennas(&mut self) -> Result<Vec<(u8, f64)>, ConnectorError> {
+        let mut antennas: Vec<(u8, f64)> = vec![];
+
         for antenna_id in 0..self.number_of_antennas {
             self.send_command(Command::SetWorkAntenna(antenna_id))?;
             self.read_command()?;
 
-            self.send_command(Command::GetRfPortReturnLoss(reference_frequency))?;
+            self.send_command(Command::GetRfPortReturnLoss(self.reference_frequency()))?;
             let response = self.read_command()?;
 
             if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
                 match vswr_res {
                     Ok(vswr) => {
+                        antennas.push((antenna_id, vswr));
                         println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
                     }
                     Err(e) => {
@@ -157,7 +216,8 @@ where
                 }
             }
         }
-        Ok(())
+
+        Ok(antennas)
     }
 
     pub fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
@@ -194,6 +254,24 @@ where
                 "Failed to set RfLinkProfile to desired settings {:?}",
                 p0
             )))
+        }
+    }
+
+    pub fn start_reader(&mut self) -> Result<(), ConnectorError> {
+        self.send_command(Command::CustomizeSessionTargetInventory(
+            Session::S1,
+            Target::A,
+            1,
+        ))
+        .unwrap();
+        let response = self.read_command().unwrap();
+        println!("Risposta ricevuta: {response}\n");
+
+        if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
+            println!("{:?}", setted_values);
+            Ok(())
+        } else {
+            Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
         }
     }
 }

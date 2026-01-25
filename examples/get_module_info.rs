@@ -1,6 +1,6 @@
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::{Command, RfLinkProfile};
-use e710_uhf::frequency_references::{get_param, Spectrum};
+use e710_uhf::frequency_references::{Spectrum, get_param};
 use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
@@ -17,14 +17,18 @@ fn main() -> std::io::Result<()> {
     println!("Connesso con successo!");
 
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(stream,8);
+    let mut connector = Connector::new(stream, 8, (Spectrum::ETSI, 865.0, 868.0));
+
+
+    connector.setup_reader().unwrap();
 
     // Vettore di comandi da eseguire
     let commands = vec![
         Command::GetFirmwareVersion,
+        Command::SetWorkAntenna(0),
         Command::GetWorkAntenna,
         Command::GetReaderTemperature,
-        Command::GetRfPortReturnLoss(866.0)
+        Command::GetRfPortReturnLoss(866.0),
     ];
 
     // Ciclo sui comandi
@@ -38,22 +42,21 @@ fn main() -> std::io::Result<()> {
         sleep(Duration::from_secs(1));
     }
 
-    println!("\n\n== Controllo antenna detection:");
-    connector.set_ant_connection_detector_if_not(0x03).unwrap();
+    println!("Get Antenna statistics");
+    let statistics = connector.get_statistic_to_all_antennas().unwrap();
 
-    println!("\n\n== Controllo frequenza:");
-    connector
-        .set_frequency_if_not(Spectrum::ETSI, 865.0, 868.0)
-        .unwrap();
+    println!("| ID antenna | vswr |");
+    for (id_antenna,vswr) in statistics.iter() {
+        println!("| {id_antenna} | {vswr} |");
+    }
 
-    println!("\n\n== Controllo potenza:");
-    connector.set_output_power_if_not(vec![15]).unwrap();
 
-    println!("\n\n== Controllo Rf Link Profile:");
-    connector.set_rf_link_profile_if_not(RfLinkProfile::Tari25usMiller4KHz250).unwrap();
 
-    println!("\n\n== Controllo tutte le antenne:");
-    connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
+    // println!("\n\n== Controllo tutte le antenne:");
+    // connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
+
+    // println!("\n\n== Avvio lettore:");
+    // connector.start_reader().unwrap();
 
     sleep(Duration::from_secs(4));
 

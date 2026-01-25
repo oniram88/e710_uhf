@@ -48,7 +48,7 @@ impl std::error::Error for FrameError {}
 /// più alta → più tag/sec
 /// più bassa → più stabilità
 ///
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(u8)]
 pub enum RfLinkProfile {
     Tari25usFM0KHz40 = 0xD0,
@@ -56,7 +56,6 @@ pub enum RfLinkProfile {
     Tari25usMiller4KHz300 = 0xD2,
     Tari625usFM0KHz400 = 0xD3,
 }
-
 
 impl RfLinkProfile {
     fn from_u8(value: u8) -> Option<Self> {
@@ -68,6 +67,22 @@ impl RfLinkProfile {
             _ => None,
         }
     }
+}
+
+/// Enumerazione dei parametri per la configurazione della sessione
+#[derive(Clone, Debug, PartialEq)]
+pub enum Session {
+    S0 = 0x00,
+    S1 = 0x01,
+    S2 = 0x02,
+    S3 = 0x03,
+}
+
+/// Enumerazione dei parametri per la configurazione del target di lettura
+#[derive(Clone, Debug, PartialEq)]
+pub enum Target {
+    A = 0x00,
+    B = 0x01,
 }
 
 #[derive(Clone)]
@@ -105,6 +120,25 @@ pub enum Command {
     /// [GetRfPortReturnLoss] il valore impostato è la frequenza di controllo, dovrebbe essere
     /// la frequenza centrale di lavoro. ES. EU 865–868 MHz -> frequenza di check 866 MHz
     GetRfPortReturnLoss(f64),
+    // SetReaderName,
+    //---- ISO18000-6C Commands
+    CustomizeSessionTargetInventory(Session, Target, u8),
+    // FastSwitchAntInventory
+    // Read
+    // Write
+    // Lock
+    // Kill
+    // SetAccessEPCMatch
+    // GetAccessEPCMatch
+    // SetImpinjFastTID
+    // GetAndSaveImpinjFastTID
+    // GetImpinjFastTID
+    //--- ISO18000-6B Commands
+    // Iso180006BInventory
+    // Iso180006BRead
+    // Iso180006BWrite
+    // Iso180006BLock
+    // Iso180006BQueryLock
 }
 
 #[derive(Debug)]
@@ -130,7 +164,7 @@ pub enum CommandResult {
     ///         The unit is dB.
     GetAntConnectionDetector(Result<u8, FrameError>),
     SetRfLinkProfile(Result<(), FrameError>),
-    GetRfLinkProfile(Result<RfLinkProfile,FrameError>),
+    GetRfLinkProfile(Result<RfLinkProfile, FrameError>),
     /// [GetRfPortReturnLoss] è il risultato del calcolo rispetto alla frequenza passata.
     /// il valore di ritorno è il VSWR calcolato dal ReturnLoss ricevuto dal device
     /// VSWR è solo un altro modo di leggere lo stesso fenomeno.
@@ -150,6 +184,7 @@ pub enum CommandResult {
     ///  VSWR ≤ 2 → buono
     ///  VSWR > 5 → problemi
     GetRfPortReturnLoss(Result<f64, FrameError>),
+    ResponsePackets(Result<Vec<Vec<u8>>,FrameError>),
 }
 
 impl Display for Command {
@@ -184,6 +219,11 @@ impl Display for Command {
                     "Rf Port Return Loss setted with reference frequency of: {reference_frequency}"
                 )
             }
+            Command::CustomizeSessionTargetInventory(session, target, tag_count) => write!(
+                f,
+                "Customize Session Target Inventory for session: {:?} target: {:?} tag_count: {:?}",
+                session, target, tag_count
+            ),
         }
     }
 }
@@ -247,10 +287,18 @@ impl Display for CommandResult {
             CommandResult::GetAntConnectionDetector(Err(err)) => {
                 write!(f, "Failed to get Connection Detector: {}", err)
             }
-            CommandResult::SetRfLinkProfile(Ok(())) => write!(f, "RF Link Profile set successfully"),
-            CommandResult::SetRfLinkProfile(Err(err)) => write!(f, "Failed to set RF Link Profile: {}", err),
-            CommandResult::GetRfLinkProfile(Ok(profile)) => write!(f, "RF Link Profile: {:?}", profile),
-            CommandResult::GetRfLinkProfile(Err(err)) => write!(f, "Failed to get RF Link Profile: {}", err),
+            CommandResult::SetRfLinkProfile(Ok(())) => {
+                write!(f, "RF Link Profile set successfully")
+            }
+            CommandResult::SetRfLinkProfile(Err(err)) => {
+                write!(f, "Failed to set RF Link Profile: {}", err)
+            }
+            CommandResult::GetRfLinkProfile(Ok(profile)) => {
+                write!(f, "RF Link Profile: {:?}", profile)
+            }
+            CommandResult::GetRfLinkProfile(Err(err)) => {
+                write!(f, "Failed to get RF Link Profile: {}", err)
+            }
             CommandResult::GetRfPortReturnLoss(Ok(v)) => {
                 write!(
                     f,
@@ -264,6 +312,13 @@ impl Display for CommandResult {
             }
             CommandResult::GetRfPortReturnLoss(Err(err)) => {
                 write!(f, "Failed to get Rf Port Return Loss: {}", err)
+            }
+
+            CommandResult::ResponsePackets(Ok(packets)) => {
+                write!(f, "Response Packets: {:#?}", packets)
+            }
+            CommandResult::ResponsePackets(Err(err)) => {
+                write!(f, "Failed to get Response Packets: {}", err)
             }
         }
     }
@@ -337,10 +392,20 @@ impl SerializableCommand for Command {
                 vec![0x62, *v]
             }
             Command::GetAntConnectionDetector => vec![0x63],
-            Command::SetRfLinkProfile(profile) => {vec![0x69,profile.clone() as u8]}
+            Command::SetRfLinkProfile(profile) => {
+                vec![0x69, profile.clone() as u8]
+            }
             Command::GetRfLinkProfile => vec![0x6A],
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 vec![0x7E, get_param(*reference_frequency)]
+            }
+            Command::CustomizeSessionTargetInventory(session, target, repeat) => {
+                vec![
+                    0x8B,
+                    session.clone() as u8,
+                    target.clone() as u8,
+                    repeat.clone(),
+                ]
             }
         }
     }
@@ -369,12 +434,14 @@ impl SerializableCommand for Command {
         );
 
         match raw_command {
-            0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(data))),
+            0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
+                data
+            ))),
             0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
             0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
             0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
                 data,
-                (0xD0,0xD3),
+                (0xD0, 0xD3),
                 |data: Vec<u8>| {
                     RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
                         FrameError::InvalidCommand(format!(
@@ -437,7 +504,7 @@ impl SerializableCommand for Command {
             },
             0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
                 data,
-                (0x00, 0x19),
+                (0x00, 0x1E),
                 |data: Vec<u8>| {
                     println!("RF Port Return Loss: {:?}", data);
 
@@ -450,6 +517,12 @@ impl SerializableCommand for Command {
 
                         Ok(vswr)
                     }
+                }
+            ))),
+            0x8B => Ok(CommandResult::ResponsePackets(parse_response!(
+                data,
+                |data: Vec<u8>|{
+                    Ok(vec![data])
                 }
             ))),
             _ => Err(FrameError::InvalidCommand(format!(
