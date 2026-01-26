@@ -26,6 +26,21 @@ impl Tag {
             antenna_id
         }
     }
+
+    pub(crate) fn from_raw(raw: &[u8]) -> Tag {
+
+        let antenna_id: u8 = raw[0] & 0b0000_0011; // low 2 bits
+        let frequency: u8 = raw[0] >> 2;    // high 6 bits
+
+        Self {
+            frequency: get_frequency(frequency),
+            pc: bytes_to_hex_upper(&raw[1..3].to_vec()),
+            epc: bytes_to_hex_upper(&raw[3..raw.len()-1]),
+            phase: (0,0),
+            rssi: raw[raw.len()-1],
+            antenna_id
+        }
+    }
 }
 
 fn bytes_to_hex_upper(bytes: &[u8]) -> String {
@@ -62,6 +77,23 @@ mod tests {
         assert_eq!(tag.pc, "3000");
         assert_eq!(tag.epc,"E28069150000401D63E3284F");
         assert_eq!(tag.phase, (0x9,0x10));
+        assert_eq!(tag.rssi, 0xC6);
+    }
+
+    #[test]
+    fn check_from_raw() {
+        let raw = vec![
+            0x13, //FreqAnt
+            0x30, 0x00, //PC
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x40, 0x1D, 0x63, 0xE3, 0x28, 0x4F, // EPC
+            0xC6,
+        ];
+        let tag = Tag::from_raw(&*raw);
+        assert_eq!(tag.frequency, 867.0);
+        assert_eq!(tag.antenna_id, 3);
+        assert_eq!(tag.pc, "3000");
+        assert_eq!(tag.epc,"E28069150000401D63E3284F");
+        assert_eq!(tag.phase, (0,0));
         assert_eq!(tag.rssi, 0xC6);
     }
 }
