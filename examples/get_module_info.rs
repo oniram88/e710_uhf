@@ -50,7 +50,14 @@ fn main() -> std::io::Result<()> {
     }
 
     println!("\n\n== Avvio lettore:");
-    connector.start_reader().unwrap();
+    loop {
+     let results =  connector.make_a_read().unwrap();
+
+        if results.len() > 0 {
+            println!("{:?}", results);
+        }
+        sleep(Duration::from_millis(30));
+    }
 
     sleep(Duration::from_secs(4));
 
