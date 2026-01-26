@@ -6,6 +6,7 @@ use log::debug;
 use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
+use crate::tag::Tag;
 
 pub struct Connector<P>
 where
@@ -264,7 +265,7 @@ where
         }
     }
 
-    pub fn start_reader(&mut self) -> Result<(), ConnectorError> {
+    pub fn make_a_read(&mut self) -> Result<Vec<Tag>, ConnectorError> {
         self.send_command(Command::CustomizeSessionTargetInventory(
             Session::S1,
             Target::A,
@@ -276,7 +277,7 @@ where
 
         if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
             println!("{:?}", setted_values);
-            Ok(())
+            Ok(setted_values.0)
         } else {
             Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
         }
