@@ -129,8 +129,38 @@ pub enum Command {
     GetRfPortReturnLoss(f64),
     // SetReaderName,
     //---- ISO18000-6C Commands
-    CustomizeSessionTargetInventory(Session, Target, u8),
-    // FastSwitchAntInventory
+    ///
+    /// - Session
+    /// - Target
+    /// - Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+    /// - Repeat the inventory with above ant switch sequence.
+    CustomizeSessionTargetInventory(
+        Session,
+        Target,
+        u8, // Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+        u8, // Repeat the inventory with above ant switch sequence.
+    ),
+    ///
+    /// - Tuple con antenna_id e stay
+    /// - Interval: Rest time between switching antennas. During the cause of rest,
+    ///   RF output will be canceled, thus power consumption and heat generation are both reduced.
+    /// - Session
+    /// - Target
+    /// - Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+    /// - Repeat the inventory with above ant switch sequence.
+    FastSwitchAntInventory(
+        // Tuple con antenna_id e stay
+        Vec<(
+            u8, // Working ant (00 – 07). If set this byte above 07 means ignore it.
+            u8, // Inventory round for an antenna. Every antenna has this parameter.
+        )>,
+        u8, //Interval: Rest time between switching antennas. During the cause of rest,
+        // RF output will be canceled, thus power consumption and heat generation are both reduced.
+        Session,
+        Target,
+        u8, // Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+        u8, // Repeat the inventory with above ant switch sequence.
+    ),
     // Read
     // Write
     // Lock
@@ -226,10 +256,22 @@ impl Display for Command {
                     "Rf Port Return Loss setted with reference frequency of: {reference_frequency}"
                 )
             }
-            Command::CustomizeSessionTargetInventory(session, target, tag_count) => write!(
+            Command::CustomizeSessionTargetInventory(session, target, phase, tag_count) => write!(
                 f,
-                "Customize Session Target Inventory for session: {:?} target: {:?} tag_count: {:?}",
-                session, target, tag_count
+                "Customize Session Target Inventory for session: {:?} target: {:?} phase: {:?} tag_count: {:?}",
+                session, target, phase, tag_count
+            ),
+            Command::FastSwitchAntInventory(
+                antennas,
+                rest,
+                session,
+                target,
+                phase,  // Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+                repeat, // Repeat the inventory with above ant switch sequence.
+            ) => write!(
+                f,
+                "Fast Switch Antenna Inventory for antennas: {:?} rest: {:?} session: {:?} target: {:?} phase: {:?} repeat: {:?}",
+                antennas, rest, session, target, phase, repeat
             ),
         }
     }
@@ -406,13 +448,36 @@ impl SerializableCommand for Command {
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 vec![0x7E, get_param(*reference_frequency)]
             }
-            Command::CustomizeSessionTargetInventory(session, target, repeat) => {
+            Command::CustomizeSessionTargetInventory(session, target, _phase, repeat) => {
                 vec![
                     0x8B,
                     session.clone() as u8,
                     target.clone() as u8,
+                    0x00, // SL a 0 Select Flag; range from: 00,01,02,03
+                    0x00, // Phase Value; 00 for turn it off; 01 for turn it on. [SE usiamo il parametro dobbiam parsare in modo diverso il risultato]
                     repeat.clone(),
                 ]
+            }
+            Command::FastSwitchAntInventory(antennas, interval, session, target, phase, repeat) => {
+                let mut v = vec![0x8A];
+
+                let flat: Vec<u8> = antennas.iter().flat_map(|(a, b)| [*a, *b]).collect();
+
+                v.extend(flat);
+
+                // complete remaining antennas spaces
+                for _ in 0..(8 - antennas.len()) {
+                    v.extend(vec![0x08, 0x00]); // Disabled antenna
+                }
+
+                v.push(interval.clone());
+                v.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00]); // Reserved bytes
+                v.push(session.clone() as u8);
+                v.push(target.clone() as u8);
+                v.extend(vec![0x00, 0x00, 0x00]); // Reserved bytes
+                v.push(phase.clone());
+                v.push(repeat.clone());
+                v
             }
         }
     }
@@ -444,7 +509,7 @@ impl SerializableCommand for Command {
             }
 
             debug!(
-                "CMD[{}] DATA[{:?}] CHECKSUM[{}]",
+                "CMD[0x{:02X}] DATA[{:?}] CHECKSUM[{}]",
                 raw_command, data, checksum
             );
 
@@ -727,6 +792,42 @@ mod tests {
         // PAYLOAD: 72
         // CHECKSUM: EC (calcolato in test_checksum)
         assert_eq!(bytes, vec![0xA0, 0x03, RS485_ADDRESS, 0x72, 0xEA]);
+    }
+
+    #[test]
+    fn test_frame_to_bytes_fast_switch_ant_inventory() {
+        let cmd = Command::FastSwitchAntInventory(
+            vec![(0, 1), (1, 1), (6, 1), (7, 1)],
+            0,
+            Session::S1,
+            Target::A,
+            0,
+            1,
+        );
+
+        let bytes = cmd.to_bytes();
+
+        assert_eq!(
+            bytes,
+            vec![
+                0x8A, // tuple antenna + stay
+                0x00, 0x01, // antenna 1
+                0x01, 0x01, // antenna 2
+                0x06, 0x01, // antenna 7
+                0x07, 0x01, // antenna 8
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x00, // interval
+                0x00, 0x00, 0x00, 0x00, 0x00, // Reserved bytes
+                0x01, // Session
+                0x00, // Target
+                0x00, 0x00, 0x00, // Reserved bytes
+                0x00, // Phase
+                0x01  // Repeat
+            ]
+        );
     }
 
     #[test]
