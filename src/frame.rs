@@ -520,7 +520,7 @@ impl SerializableCommand for Command {
                     data,
                     (0x00, 0x1E),
                     |data: Vec<u8>| {
-                        println!("RF Port Return Loss: {:?}", data);
+                        debug!("RF Port Return Loss: {:?}", data);
 
                         let rl_db = data[0] as f64;
                         if rl_db == 0.0 {

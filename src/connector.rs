@@ -2,7 +2,7 @@ use crate::frame::{
     Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand, Session, Target,
 };
 use crate::frequency_references::Spectrum;
-use log::debug;
+use log::{debug, info, warn};
 use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -87,15 +87,14 @@ where
         let bytes = frame.to_bytes();
 
         debug!("[TX] {:02X?} - [{cmd}]", bytes);
-        println!("[TX] {:02X?} - [{cmd}]", bytes);
+        // println!("[TX] {:02X?} - [{cmd}]", bytes);
         self.send_frame(&bytes)?;
         Ok(())
     }
 
     pub fn read_command(&mut self) -> Result<CommandResult, ConnectorError> {
         let response = self.read_response()?;
-        debug!("[RX] {:02X?}", response);
-        println!(
+        debug!(
             "[RX] [{}]",
             response
                 .iter()
@@ -107,20 +106,20 @@ where
     }
 
     pub fn setup_reader(&mut self) -> Result<(), ConnectorError> {
-        println!("\n\n== Controllo antenna detection:");
+        info!("\n\n== Controllo antenna detection:");
         self.set_ant_connection_detector_if_not(0x03).unwrap(); // TODO configurable
 
-        println!("\n\n== Controllo frequenza:");
+        info!("\n\n== Controllo frequenza:");
         self.set_frequency_if_not(
             self.working_freq_setup.0.clone(),
             self.working_freq_setup.1,
             self.working_freq_setup.2,
         )?;
 
-        println!("\n\n== Controllo potenza:");
+        info!("\n\n== Controllo potenza:");
         self.set_output_power_if_not(self.output_power.clone())?;
 
-        println!("\n\n== Controllo Rf Link Profile:");
+        info!("\n\n== Controllo Rf Link Profile:");
         self.set_rf_link_profile_if_not(RfLinkProfile::Tari25usMiller4KHz250)?; //TODO configurable
 
         Ok(())
@@ -219,7 +218,7 @@ where
                         println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
                     }
                     Err(e) => {
-                        println!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
+                        warn!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
                     }
                 }
             }
@@ -273,10 +272,10 @@ where
         ))
         .unwrap();
         let response = self.read_command().unwrap();
-        println!("Risposta ricevuta: {response}\n");
+        debug!("Risposta ricevuta: {response}\n");
 
         if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
-            println!("{:?}", setted_values);
+            debug!("{:?}", setted_values);
             Ok(setted_values.0)
         } else {
             Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
