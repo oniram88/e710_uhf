@@ -264,7 +264,9 @@ where
         }
     }
 
-    pub fn make_a_read(&mut self) -> Result<Vec<Tag>, ConnectorError> {
+    ///
+    /// Read with 1 repeat on the working antenna
+    pub fn make_a_read_single_antenna(&mut self) -> Result<Vec<Tag>, ConnectorError> {
         self.send_command(Command::CustomizeSessionTargetInventory(
             Session::S1,
             Target::A,

@@ -74,7 +74,7 @@ fn main() -> std::io::Result<()> {
 
     info!("\n\n== Avvio lettore:");
     loop {
-     let results =  connector.make_a_read().unwrap();
+     let results =  connector.make_a_read_single_antenna().unwrap();
 
         if results.len() > 0 {
             info!("{:?}", results);
