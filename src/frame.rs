@@ -1,5 +1,6 @@
 use crate::error_references::ErrorCode;
 use crate::frequency_references::{Spectrum, get_frequency, get_param};
+use crate::tag::Tag;
 use log::debug;
 use std::fmt::{Display, Formatter};
 
@@ -13,6 +14,8 @@ pub enum FrameError {
     InvalidPacket(Vec<u8>),
     FailedResponse(ErrorCode, Vec<u8>),
     AntennaNotConnected,
+    TagParsingError(Vec<u8>),
+    InvalidChecksum,
 }
 
 impl Display for FrameError {
@@ -29,6 +32,10 @@ impl Display for FrameError {
                 code, packet
             ),
             FrameError::AntennaNotConnected => write!(f, "Antenna not connected"),
+            FrameError::TagParsingError(tag) => {
+                write!(f, "Tag parsing error with raw data: {:#?}", tag)
+            }
+            FrameError::InvalidChecksum => write!(f, "Invalid checksum"),
         }
     }
 }
@@ -184,7 +191,7 @@ pub enum CommandResult {
     ///  VSWR ≤ 2 → buono
     ///  VSWR > 5 → problemi
     GetRfPortReturnLoss(Result<f64, FrameError>),
-    ResponsePackets(Result<Vec<Vec<u8>>,FrameError>),
+    ResponsePackets(Result<(Vec<Tag>, ReadResult), FrameError>),
 }
 
 impl Display for Command {
@@ -423,114 +430,125 @@ impl SerializableCommand for Command {
             return Err(FrameError::InvalidPacket(raw.clone()));
         }
 
-        let length = raw[1] as usize;
-        let raw_command = raw[3];
-        let checksum = raw[length + 1];
-        let data = (&raw[4..(4 + length - 3)]).to_vec();
+        let (length, raw_command, checksum, data) = split_in_base_frame_parts(&raw);
 
-        debug!(
-            "CMD[{}] DATA[{:?}] CHECKSUM[{}]",
-            raw_command, data, checksum
-        );
-
-        match raw_command {
-            0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
-                data
-            ))),
-            0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
-            0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
-            0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
+        if raw_command == 0x8B {
+            // In questo caso abbiamo più pacchetti concatenati con più checksums
+            Ok(CommandResult::ResponsePackets(parse_response!(
                 data,
-                (0xD0, 0xD3),
-                |data: Vec<u8>| {
-                    RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
-                        FrameError::InvalidCommand(format!(
-                            "Invalid RF link profile: 0x{:02X}",
-                            data[0]
-                        ))
-                    })
-                }
-            ))),
-            0x70 => Ok(CommandResult::Reset(parse_response!(data))),
-            0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
-            0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
-            0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
-            0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
-                data,
-                |data: Vec<u8>| {
-                    let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
-                    Ok(data[1] as f64 * sign)
-                }
-            ))),
-            0x76 => Ok(CommandResult::Reset(parse_response!(data))),
-            0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
-            0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
-                data
-            ))),
-            0x79 => match data[0] {
-                0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
-                    data,
-                    |data: Vec<u8>| Ok((
-                        Spectrum::FCC,
-                        get_frequency(data[1]),
-                        get_frequency(data[2])
-                    ))
-                ))),
-                0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
-                    data,
-                    |data: Vec<u8>| Ok((
-                        Spectrum::ETSI,
-                        get_frequency(data[1]),
-                        get_frequency(data[2])
-                    ))
-                ))),
-                0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(parse_response!(
-                    data,
-                    |data: Vec<u8>| Ok((
-                        Spectrum::CHN,
-                        get_frequency(data[1]),
-                        get_frequency(data[2])
-                    ))
-                ))),
-                0x04 if length == 9 => {
-                    // todo!("Da completare la versione impostata dall'utente");
-                    Ok(CommandResult::GetFrequencyRegion(Ok((
-                        Spectrum::CUSTOM,
-                        0.0,
-                        0.0,
-                    ))))
-                }
-                _ => Err(FrameError::ResponseNotExpected(raw.clone())),
-            },
-            0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
-                data,
-                (0x00, 0x1E),
-                |data: Vec<u8>| {
-                    println!("RF Port Return Loss: {:?}", data);
+                |data: Vec<u8>| { Ok(parse_tag_response(raw)?) }
+            )))
+        } else {
+            if checksum != calculate_checksum(&raw[0..(raw.len() - 1)]) {
+                return Err(FrameError::InvalidChecksum);
+            }
 
-                    let rl_db = data[0] as f64;
-                    if rl_db == 0.0 {
-                        Err(FrameError::AntennaNotConnected)
-                    } else {
-                        let x = 10f64.powf(rl_db / 20.0);
-                        let vswr = (x + 1.0) / (x - 1.0);
+            debug!(
+                "CMD[{}] DATA[{:?}] CHECKSUM[{}]",
+                raw_command, data, checksum
+            );
 
-                        Ok(vswr)
+            match raw_command {
+                0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
+                    data
+                ))),
+                0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
+                0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
+                0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
+                    data,
+                    (0xD0, 0xD3),
+                    |data: Vec<u8>| {
+                        RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
+                            FrameError::InvalidCommand(format!(
+                                "Invalid RF link profile: 0x{:02X}",
+                                data[0]
+                            ))
+                        })
+                    }
+                ))),
+                0x70 => Ok(CommandResult::Reset(parse_response!(data))),
+                0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+                0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
+                0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
+                0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
+                    data,
+                    |data: Vec<u8>| {
+                        let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
+                        Ok(data[1] as f64 * sign)
+                    }
+                ))),
+                0x76 => Ok(CommandResult::Reset(parse_response!(data))),
+                0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
+                0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
+                    data
+                ))),
+                0x79 => {
+                    match data[0] {
+                        0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                            parse_response!(data, |data: Vec<u8>| Ok((
+                                Spectrum::FCC,
+                                get_frequency(data[1]),
+                                get_frequency(data[2])
+                            ))),
+                        )),
+                        0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                            parse_response!(data, |data: Vec<u8>| Ok((
+                                Spectrum::ETSI,
+                                get_frequency(data[1]),
+                                get_frequency(data[2])
+                            ))),
+                        )),
+                        0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                            parse_response!(data, |data: Vec<u8>| Ok((
+                                Spectrum::CHN,
+                                get_frequency(data[1]),
+                                get_frequency(data[2])
+                            ))),
+                        )),
+                        0x04 if length == 9 => {
+                            // todo!("Da completare la versione impostata dall'utente");
+                            Ok(CommandResult::GetFrequencyRegion(Ok((
+                                Spectrum::CUSTOM,
+                                0.0,
+                                0.0,
+                            ))))
+                        }
+                        _ => Err(FrameError::ResponseNotExpected(raw.clone())),
                     }
                 }
-            ))),
-            0x8B => Ok(CommandResult::ResponsePackets(parse_response!(
-                data,
-                |data: Vec<u8>|{
-                    Ok(vec![data])
-                }
-            ))),
-            _ => Err(FrameError::InvalidCommand(format!(
-                "Invalid Response command code: {}",
-                raw[0]
-            ))),
+                0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
+                    data,
+                    (0x00, 0x1E),
+                    |data: Vec<u8>| {
+                        println!("RF Port Return Loss: {:?}", data);
+
+                        let rl_db = data[0] as f64;
+                        if rl_db == 0.0 {
+                            Err(FrameError::AntennaNotConnected)
+                        } else {
+                            let x = 10f64.powf(rl_db / 20.0);
+                            let vswr = (x + 1.0) / (x - 1.0);
+
+                            Ok(vswr)
+                        }
+                    }
+                ))),
+
+                _ => Err(FrameError::InvalidCommand(format!(
+                    "Invalid Response command code: {}",
+                    raw[0]
+                ))),
+            }
         }
     }
+}
+
+fn split_in_base_frame_parts(raw: &[u8]) -> (usize, u8, u8, Vec<u8>) {
+    let length = raw[1] as usize;
+    let raw_command = raw[3];
+    let checksum = raw[length + 1];
+    let data = (&raw[4..(4 + length - 3)]).to_vec();
+    (length, raw_command, checksum, data)
 }
 
 fn from_bytes_to_utf8(bytes: &Vec<u8>) -> String {
@@ -567,12 +585,12 @@ impl Frame {
 
         v.extend(&self.payload);
 
-        v.push(checksum(&v));
+        v.push(calculate_checksum(&v));
         v
     }
 }
 
-fn checksum(buff: &[u8]) -> u8 {
+fn calculate_checksum(buff: &[u8]) -> u8 {
     let mut sum: u8 = 0;
 
     for &b in buff {
@@ -582,9 +600,80 @@ fn checksum(buff: &[u8]) -> u8 {
     (!sum).wrapping_add(1)
 }
 
+#[derive(Debug)]
+pub struct ReadResult {
+    antenna_id: u8,
+    read_rate: u16,
+    total_read: u32,
+}
+
+fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
+    let mut packets = Vec::new();
+    let mut offset = 0;
+
+    while offset < buf.len() {
+        // 1️⃣ cerca header
+        if buf[offset] != FRAME_HEADER {
+            offset += 1;
+            continue;
+        }
+
+        // 2️⃣ serve almeno Head + Len
+        if offset + 2 > buf.len() {
+            break;
+        }
+
+        let len = buf[offset + 1] as usize;
+        let pkt_len = len + 2;
+
+        // 3️⃣ pacchetto incompleto
+        if offset + pkt_len > buf.len() {
+            break;
+        }
+
+        packets.push(&buf[offset..offset + pkt_len]);
+        offset += pkt_len;
+    }
+
+    packets
+}
+
+fn parse_tag_response(raw_data: Vec<u8>) -> Result<(Vec<Tag>, ReadResult), FrameError> {
+    let mut tags: Vec<Tag> = Vec::new();
+    let mut result: ReadResult = ReadResult {
+        antenna_id: 0,
+        read_rate: 0,
+        total_read: 0,
+    };
+
+    let packets = split_packets(&raw_data);
+
+    for frame in packets {
+        // devo elaborare il pacchetto
+        let (length, raw_command, checksum, data) = split_in_base_frame_parts(frame);
+        if checksum != calculate_checksum(&frame[0..(frame.len() - 1)]) {
+            return Err(FrameError::InvalidChecksum);
+        }
+
+        if length == 0x0A {
+            // Ultimo frame di check
+            result = ReadResult {
+                antenna_id: frame[4],
+                read_rate: u16::from_be_bytes([frame[5], frame[6]]),
+                total_read: u32::from_be_bytes([frame[7], frame[8], frame[9], frame[10]]),
+            }
+        } else {
+            tags.push(Tag::from_raw(&frame[4..frame.len() - 1]));
+        }
+    }
+
+    Ok((tags, result))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tag::Tag;
 
     #[test]
     fn test_checksum() {
@@ -597,7 +686,7 @@ mod tests {
         // 0xA0 + 0x03 + 0xFF + 0x72 = 0x278
         // !0x278 + 1 = 0xEA
         let data = vec![0xA0, 0x03, 0x01, 0x72];
-        assert_eq!(checksum(&data), 0xEA);
+        assert_eq!(calculate_checksum(&data), 0xEA);
     }
 
     #[test]
@@ -671,7 +760,7 @@ mod tests {
 
     #[test]
     fn test_get_work_antenna() {
-        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xEA];
+        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
         let result = Command::from_byte(raw_packet).unwrap();
 
         if let CommandResult::GetWorkAntenna(Ok(pos)) = result {
@@ -679,5 +768,51 @@ mod tests {
         } else {
             panic!("Expected GetWorkAntenna(Ok), got {:?}", result);
         }
+    }
+
+    #[test]
+    fn test_parse_tag_response() {
+        let mut raw_packet = vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x50, 0x1D, 0x63, 0xE2, 0xA0, 0x4F, //EPC
+            0xD3, 0x26,
+        ];
+
+        raw_packet.extend(vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x40, 0x1D, 0x63, 0xE2, 0xA4, 0x4F, //EPC
+            0xD2, 0x33,
+        ]);
+
+        raw_packet.extend(vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x50, 0x1D, 0x63, 0xE2, 0x9C, 0x4F, //EPC
+            0xD4, 0x29,
+        ]);
+
+        raw_packet.extend(vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x40, 0x1D, 0x63, 0xE3, 0x28, 0x4F, //EPC
+            0xC4, 0xBC,
+        ]);
+
+        raw_packet.extend(vec![
+            0xA0, 0x0A, 0x01, 0x8B, // parte iniziale struttura pacchetto
+            0x07, // ant ID
+            0x00, 0x5A, // ReadRate
+            0x00, 0x00, 0x00, 0x04, // Total read
+            0x65, //Checksum
+        ]);
+
+        let result = parse_tag_response(raw_packet).unwrap();
+
+        assert_eq!(result.1.antenna_id, 7);
+        assert_eq!(result.1.read_rate, 90);
+        assert_eq!(result.1.total_read, 4);
+        assert_eq!(result.0.len(), 4);
+        assert_eq!(result.0[0].epc, "E28069150000501D63E2A04F".to_string());
+        assert_eq!(result.0[1].epc, "E28069150000401D63E2A44F".to_string());
+        assert_eq!(result.0[2].epc, "E28069150000501D63E29C4F".to_string());
+        assert_eq!(result.0[3].epc, "E28069150000401D63E3284F".to_string());
     }
 }

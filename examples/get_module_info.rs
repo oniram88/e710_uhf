@@ -45,17 +45,12 @@ fn main() -> std::io::Result<()> {
     let statistics = connector.get_statistic_to_all_antennas().unwrap();
 
     println!("| ID antenna | vswr |");
-    for (id_antenna,vswr) in statistics.iter() {
+    for (id_antenna, vswr) in statistics.iter() {
         println!("| {id_antenna} | {vswr} |");
     }
 
-
-
-    // println!("\n\n== Controllo tutte le antenne:");
-    // connector.check_all_antennas_rf_port_return_loss(866.0).unwrap();
-
-    // println!("\n\n== Avvio lettore:");
-    // connector.start_reader().unwrap();
+    println!("\n\n== Avvio lettore:");
+    connector.start_reader().unwrap();
 
     sleep(Duration::from_secs(4));
 
