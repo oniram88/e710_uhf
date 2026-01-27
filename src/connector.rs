@@ -2,11 +2,12 @@ use crate::frame::{
     Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand, Session, Target,
 };
 use crate::frequency_references::Spectrum;
+use crate::tag::Tag;
+use crate::tag_iterator;
 use log::{debug, info, warn};
 use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
-use crate::tag::Tag;
 
 pub struct Connector<P>
 where
@@ -60,14 +61,17 @@ impl<P> Connector<P>
 where
     P: Read + Write,
 {
-    pub fn new(p0: P, number_of_antennas: u8,
-               output_power: Vec<u8>,
-               working_freq_setup: (Spectrum, f64, f64)) -> Self {
+    pub fn new(
+        p0: P,
+        number_of_antennas: u8,
+        output_power: Vec<u8>,
+        working_freq_setup: (Spectrum, f64, f64),
+    ) -> Self {
         Connector {
             port: p0,
             number_of_antennas,
             working_freq_setup,
-            output_power
+            output_power,
         }
     }
 
@@ -82,7 +86,7 @@ where
         Ok(buffer[..n].to_vec())
     }
 
-    pub fn send_command(&mut self, cmd: Command) -> Result<(), ConnectorError> {
+    pub fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
         let frame = Frame::new(&cmd);
         let bytes = frame.to_bytes();
 
@@ -92,7 +96,18 @@ where
         Ok(())
     }
 
-    pub fn read_command(&mut self) -> Result<CommandResult, ConnectorError> {
+    pub fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError> {
+        self.send_command(&cmd)?;
+        self.read_command(&cmd)
+    }
+
+    ///
+    /// Legge il comando di risposta, ma passiamo il comando inviato a cui dobbiamo ricevere risposta
+    /// in modo che possiamo poi capire come parsare il dato
+    pub fn read_command(
+        &mut self,
+        sent_command: &Command,
+    ) -> Result<CommandResult, ConnectorError> {
         let response = self.read_response()?;
         debug!(
             "[RX] [{}]",
@@ -102,7 +117,7 @@ where
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        Ok(Command::from_byte(response)?)
+        Ok(Command::from_byte(response, sent_command)?)
     }
 
     pub fn setup_reader(&mut self) -> Result<(), ConnectorError> {
@@ -131,14 +146,12 @@ where
         p1: f64,
         p2: f64,
     ) -> Result<(), ConnectorError> {
-        self.send_command(Command::GetFrequencyRegion)?;
-        let response = self.read_command()?;
+        let response = self.send_and_read_command(Command::GetFrequencyRegion)?;
 
         if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
             if region.0 != p0 || region.1 != p1 || region.2 != p2 {
                 debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
-                self.send_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
-                self.read_command()?;
+                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
             }
             Ok(())
         } else {
@@ -150,14 +163,12 @@ where
     }
 
     pub fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError> {
-        self.send_command(Command::GetOutputPower)?;
-        let response = self.read_command()?;
+        let response = self.send_and_read_command(Command::GetOutputPower)?;
 
         if let CommandResult::GetOutputPower(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE OUTPUT POWER: {:?}", p0);
-                self.send_command(Command::SetOutputPower(p0.clone()))?;
-                self.read_command()?;
+                self.send_and_read_command(Command::SetOutputPower(p0.clone()))?;
             }
             Ok(())
         } else {
@@ -197,7 +208,6 @@ where
     //     Ok(())
     // }
 
-
     ///
     /// Return VSWR for every antenna
     ///
@@ -205,11 +215,10 @@ where
         let mut antennas: Vec<(u8, f64)> = vec![];
 
         for antenna_id in 0..self.number_of_antennas {
-            self.send_command(Command::SetWorkAntenna(antenna_id))?;
-            self.read_command()?;
+            self.send_and_read_command(Command::SetWorkAntenna(antenna_id))?;
 
-            self.send_command(Command::GetRfPortReturnLoss(self.reference_frequency()))?;
-            let response = self.read_command()?;
+            let response = self
+                .send_and_read_command(Command::GetRfPortReturnLoss(self.reference_frequency()))?;
 
             if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
                 match vswr_res {
@@ -228,14 +237,12 @@ where
     }
 
     pub fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
-        self.send_command(Command::GetAntConnectionDetector)?;
-        let response = self.read_command()?;
+        let response = self.send_and_read_command(Command::GetAntConnectionDetector)?;
 
         if let CommandResult::GetAntConnectionDetector(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE ConnectionDetector value: {:?}", p0);
-                self.send_command(Command::SetAntConnectionDetector(p0.clone()))?;
-                self.read_command()?;
+                self.send_and_read_command(Command::SetAntConnectionDetector(p0.clone()))?;
             }
             Ok(())
         } else {
@@ -247,13 +254,11 @@ where
     }
 
     pub fn set_rf_link_profile_if_not(&mut self, p0: RfLinkProfile) -> Result<(), ConnectorError> {
-        self.send_command(Command::GetRfLinkProfile)?;
-        let response = self.read_command()?;
+        let response = self.send_and_read_command(Command::GetRfLinkProfile)?;
         if let CommandResult::GetRfLinkProfile(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE RfLinkProfile to value: {:?}", p0);
-                self.send_command(Command::SetRfLinkProfile(p0.clone()))?;
-                self.read_command()?;
+                self.send_and_read_command(Command::SetRfLinkProfile(p0.clone()))?;
             }
             Ok(())
         } else {
@@ -267,13 +272,12 @@ where
     ///
     /// Read with 1 repeat on the working antenna
     pub fn make_a_read_single_antenna(&mut self) -> Result<Vec<Tag>, ConnectorError> {
-        self.send_command(Command::CustomizeSessionTargetInventory(
+        let response = self.send_and_read_command(Command::CustomizeSessionTargetInventory(
             Session::S1,
             Target::A,
+            0,
             1,
-        ))
-        .unwrap();
-        let response = self.read_command().unwrap();
+        ))?;
         debug!("Risposta ricevuta: {response}\n");
 
         if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
@@ -282,5 +286,35 @@ where
         } else {
             Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
         }
+    }
+
+    ///
+    /// Read with 1 repeat on the working antenna
+    pub fn read_fast_switching_antenna_read(&mut self) -> Result<Vec<Tag>, ConnectorError> {
+        println!("\t\t-----Reading Fast Switching Antenna");
+        let mut out = Vec::new();
+        let cmd = Command::FastSwitchAntInventory(
+            vec![(0, 1), (1, 1), (6, 1), (7, 1)],
+            0,
+            Session::S1,
+            Target::A,
+            0,
+            1,
+        );
+        self.send_command(&cmd)?;
+
+        let mut iter_tag = tag_iterator::tag_stream(self,&cmd, std::time::Duration::from_secs(0));
+
+        while let Some(res) = iter_tag.next() {
+            println!("\t\t\tWHILE iterator {:?}", res);
+            match res {
+                Ok(tag) => {
+                    out.push(tag);
+                },
+                Err(e) => println!("Error reading tags: {:?}", e),
+            }
+        }
+
+        Ok(out)
     }
 }
