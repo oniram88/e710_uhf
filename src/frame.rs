@@ -677,13 +677,13 @@ fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
     let mut offset = 0;
 
     while offset < buf.len() {
-        // 1️⃣ cerca header
+        // cerca header
         if buf[offset] != FRAME_HEADER {
             offset += 1;
             continue;
         }
 
-        // 2️⃣ serve almeno Head + Len
+        // serve almeno Head + Len
         if offset + 2 > buf.len() {
             break;
         }
@@ -691,7 +691,7 @@ fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
         let len = buf[offset + 1] as usize;
         let pkt_len = len + 2;
 
-        // 3️⃣ pacchetto incompleto
+        // pacchetto incompleto
         if offset + pkt_len > buf.len() {
             break;
         }
