@@ -1,11 +1,11 @@
-use std::io::Write;
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::{Command, RfLinkProfile};
 use e710_uhf::frequency_references::{Spectrum, get_param};
+use log::{Level, LevelFilter, info, warn, debug};
+use std::io::Write;
 use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
-use log::{Level, LevelFilter, info, warn};
 
 fn logger_builder(level: LevelFilter) {
     let mut builder = env_logger::Builder::new();
@@ -24,11 +24,9 @@ fn logger_builder(level: LevelFilter) {
         .init();
 }
 
-
-
 fn main() -> std::io::Result<()> {
     logger_builder(LevelFilter::Info);
-    
+
     // Indirizzo IP e porta del lettore UHF
     let addr = "192.168.0.178:4001";
 
@@ -55,10 +53,9 @@ fn main() -> std::io::Result<()> {
 
     // Ciclo sui comandi
     for cmd in commands {
-        connector.send_command(cmd.clone()).unwrap();
+        let response =connector.send_and_read_command(cmd).unwrap();
 
         // Lettura della risposta
-        let response = connector.read_command().unwrap();
         info!("Risposta ricevuta: {response}\n");
 
         sleep(Duration::from_secs(1));
@@ -72,12 +69,31 @@ fn main() -> std::io::Result<()> {
         info!("| {id_antenna} | {vswr} |");
     }
 
-    info!("\n\n== Avvio lettore:");
-    loop {
-     let results =  connector.make_a_read_single_antenna().unwrap();
+    // info!("\n\n== Avvio lettore:");
+    // loop {
+    //  let results =  connector.make_a_read_single_antenna().unwrap();
+    //
+    //     if results.len() > 0 {
+    //         info!("{:?}", results);
+    //     }
+    //     sleep(Duration::from_millis(30));
+    // }
 
-        if results.len() > 0 {
-            info!("{:?}", results);
+    info!("\n\n== Avvio lettore fast switching:");
+    loop {
+        debug!("Waiting for tags...");
+        if let Ok(results) = connector.read_fast_switching_antenna_read() {
+            if results.len() > 0 {
+
+                for tag in results.iter() {
+                    info!("-  [{}] | {} | RSSI:{}",tag.antenna_id ,tag.epc, tag.rssi);
+                }
+
+                info!("TOTALE: {} TAGS", results.len());
+
+            }
+        }else{
+            warn!("Error reading tags");
         }
         sleep(Duration::from_millis(30));
     }

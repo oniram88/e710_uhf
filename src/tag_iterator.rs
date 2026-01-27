@@ -13,6 +13,7 @@ pub struct TagIterator<'a, P: Read + Write> {
     last_emit: Instant,
     interval: Duration,
     buffer: VecDeque<Tag>,
+    finished: bool, // identifica quando ho letto per intero un comando
 }
 impl<P> Iterator for TagIterator<'_, P>
 where
@@ -24,6 +25,10 @@ where
         // Nel caso abbiamo bufferizzato multipli tags
         if let Some(tag) = self.buffer.pop_front() {
             return Some(Ok(tag));
+        }
+
+        if self.finished {
+            return None;
         }
 
         // Rate limiting solo se impostato
@@ -41,6 +46,7 @@ where
                 debug!("Risposta ricevuta: {response}\n");
                 if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
                     self.buffer.extend(setted_values.0);
+                    self.finished = true;
                 }
             }
             Err(e) => {
@@ -63,5 +69,6 @@ pub(crate) fn tag_stream<'a, P: std::io::Read + std::io::Write>(
         last_emit: Instant::now(),
         buffer: VecDeque::new(),
         interval,
+        finished: false,
     }
 }

@@ -4,7 +4,7 @@ use crate::frame::{
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
 use crate::tag_iterator;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -91,7 +91,6 @@ where
         let bytes = frame.to_bytes();
 
         debug!("[TX] {:02X?} - [{cmd}]", bytes);
-        // println!("[TX] {:02X?} - [{cmd}]", bytes);
         self.send_frame(&bytes)?;
         Ok(())
     }
@@ -224,7 +223,7 @@ where
                 match vswr_res {
                     Ok(vswr) => {
                         antennas.push((antenna_id, vswr));
-                        println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
+                        info!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
                     }
                     Err(e) => {
                         warn!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
@@ -291,7 +290,6 @@ where
     ///
     /// Read with 1 repeat on the working antenna
     pub fn read_fast_switching_antenna_read(&mut self) -> Result<Vec<Tag>, ConnectorError> {
-        println!("\t\t-----Reading Fast Switching Antenna");
         let mut out = Vec::new();
         let cmd = Command::FastSwitchAntInventory(
             vec![(0, 1), (1, 1), (6, 1), (7, 1)],
@@ -306,12 +304,11 @@ where
         let mut iter_tag = tag_iterator::tag_stream(self,&cmd, std::time::Duration::from_secs(0));
 
         while let Some(res) = iter_tag.next() {
-            println!("\t\t\tWHILE iterator {:?}", res);
             match res {
                 Ok(tag) => {
                     out.push(tag);
                 },
-                Err(e) => println!("Error reading tags: {:?}", e),
+                Err(e) => error!("Error reading tags: {:?}", e),
             }
         }
 
