@@ -416,7 +416,7 @@ impl SerializableCommand for Command {
     /// Genera i bytes che identificano comando e dati nel caso di un comando con dati
     fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Command::Reset => vec![0xA0],
+            Command::Reset => vec![0x70],
             Command::SetWorkAntenna(index) => {
                 vec![0x74, *index]
             }
