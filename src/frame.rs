@@ -501,7 +501,7 @@ impl SerializableCommand for Command {
             // In questo caso abbiamo più pacchetti concatenati con più checksums
             Ok(CommandResult::ResponsePackets(parse_response!(
                 data,
-                |data: Vec<u8>| { Ok(parse_tag_response(raw)?) }
+                |data: Vec<u8>| { Ok(parse_tag_response_custom_session_target(raw)?) }
             )))
         } else {
             if checksum != calculate_checksum(&raw[0..(raw.len() - 1)]) {
@@ -703,7 +703,7 @@ fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
     packets
 }
 
-fn parse_tag_response(raw_data: Vec<u8>) -> Result<(Vec<Tag>, ReadResult), FrameError> {
+fn parse_tag_response_custom_session_target(raw_data: Vec<u8>) -> Result<(Vec<Tag>, ReadResult), FrameError> {
     let mut tags: Vec<Tag> = Vec::new();
     let mut result: ReadResult = ReadResult {
         antenna_id: 0,
@@ -905,7 +905,7 @@ mod tests {
             0x65, //Checksum
         ]);
 
-        let result = parse_tag_response(raw_packet).unwrap();
+        let result = parse_tag_response_custom_session_target(raw_packet).unwrap();
 
         assert_eq!(result.1.antenna_id, 7);
         assert_eq!(result.1.read_rate, 90);
