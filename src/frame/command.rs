@@ -910,4 +910,52 @@ mod tests {
         assert_eq!(result.1.read_rate, 0); // lo calcoliamo dividendo il tempo della durata con il numero totali di letture in ms
         assert_eq!(result.0.len(), 0);
     }
+
+    #[test]
+    fn test_split_packets() {
+        let packet_a = vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x50, 0x1D, 0x63, 0xE2, 0xA0, 0x4F, //EPC
+            0xD3, 0x26,
+        ];
+
+        let packet_b = vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x40, 0x1D, 0x63, 0xE2, 0xA4, 0x4F, //EPC
+            0xD2, 0x33,
+        ];
+
+        let packet_c = vec![
+            0xA0, 0x13, 0x01, 0x8B, 0x17, 0x30, 0x00, // head
+            0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x50, 0x1D, 0x63, 0xE2, 0x9C, 0x4F, //EPC
+            0xD4, 0x29,
+        ];
+
+        let mut test_packets = vec![];
+        test_packets.extend(packet_a.clone());
+        test_packets.extend(packet_b.clone());
+        test_packets.extend(packet_c.clone());
+
+        assert_eq!(
+            split_packets(&test_packets),
+            vec![packet_a.clone(), packet_b.clone(), packet_c.clone()]
+        );
+
+        // in case of wrong start packet
+        let mut test_packets = vec![0x11];
+        test_packets.extend(packet_a.clone());
+        test_packets.extend(vec![0x22]);
+        test_packets.extend(packet_b.clone());
+        test_packets.extend(vec![0x33]);
+        test_packets.extend(packet_c.clone());
+
+        assert_eq!(
+            split_packets(&test_packets),
+            vec![packet_a.clone(), packet_b.clone(), packet_c.clone()]
+        );
+
+        // in case of malformed packet no results
+        let test_packets = vec![0x11, 0x32];
+        assert!(split_packets(&test_packets).is_empty());
+    }
 }
