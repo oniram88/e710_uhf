@@ -683,46 +683,57 @@ fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::Frame;
+    use paste::paste;
 
-    #[test]
-    fn test_command_to_bytes_get_firmware_version() {
-        let cmd = Command::GetFirmwareVersion;
-        assert_eq!(cmd.to_bytes(), vec![0x72]);
-    }
-    #[test]
-    fn test_parse_command_get_firmware_version() {
-        let cmd = Command::from_byte(
-            vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1],
-            &Command::GetFirmwareVersion,
-        )
-        .unwrap();
-        let expected_version = (70 as u8, 1 as u8);
-
-        assert!(
-            matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version)
-        );
-
-        let err = Command::from_byte(vec![0x00], &Command::GetFirmwareVersion);
-        assert!(err.is_err());
+    macro_rules! test_command_to_bytes {
+        ($name:ident, $input:expr, $expected:expr) => {
+            paste! {
+                #[test]
+                fn [<test_command_to_bytes_ $name>]() {
+                    let cmd = $input;
+                    let result = cmd.to_bytes();
+                    assert_eq!(result, $expected);
+                }
+            }
+        };
     }
 
-    #[test]
-    fn test_command_to_bytes_fast_switch_ant_inventory() {
-        let cmd = Command::FastSwitchAntInventory(
+    ///
+    /// Genera multipli test come in una tabella
+    macro_rules! command_to_bytes_tests {
+        ($(
+            $name:ident => $command:expr => $expected:expr
+        ),+ $(,)?) => {
+            $(
+                test_command_to_bytes!($name, $command, $expected);
+            )+
+        };
+    }
+
+    command_to_bytes_tests!(
+        reset => Command::Reset => vec![0x70],
+        set_work_antenna_1 => Command::SetWorkAntenna(1) => vec![0x74, 0x01],
+        get_work_antenna => Command::GetWorkAntenna => vec![0x75],
+        get_firmware_version => Command::GetFirmwareVersion => vec![0x72],
+        get_reader_temperature => Command::GetReaderTemperature => vec![0x7B],
+        set_output_power => Command::SetOutputPower(vec![0x22]) => vec![0x76,0x22],
+        get_output_power => Command::GetOutputPower => vec![0x77],
+        set_default_frequency_region => Command::SetDefaultFrequencyRegion(Spectrum::FCC,865.00,903.00) => vec![0x78,0x01, 0x00,0x09],
+        get_frequency_region => Command::GetFrequencyRegion => vec![0x79],
+        set_ant_connection_detector => Command::SetAntConnectionDetector(0x12) => vec![0x62, 0x12],
+        get_ant_connection_detector => Command::GetAntConnectionDetector => vec![0x63],
+        set_rf_link_profile => Command::SetRfLinkProfile(RfLinkProfile::Tari25usMiller4KHz250) => vec![0x69, 0xD1],
+        get_rf_link_profile => Command::GetRfLinkProfile => vec![0x6A],
+        get_rf_port_return_loss => Command::GetRfPortReturnLoss(923.50) => vec![0x7E, 0x32],
+        customize_session_target_inventory => Command::CustomizeSessionTargetInventory(Session::S1,Target::A,0,1)=> vec![0x8B,0x01,0x00,0x00,0x00,0x01],
+        fast_switching_ant_intentory => Command::FastSwitchAntInventory(
             vec![(0, 1), (1, 1), (6, 1), (7, 1)],
             0,
             Session::S1,
             Target::A,
             0,
-            1,
-        );
-
-        let bytes = cmd.to_bytes();
-
-        assert_eq!(
-            bytes,
-            vec![
+            1
+        ) => vec![
                 0x8A, // tuple antenna + stay
                 0x00, 0x01, // antenna 1
                 0x01, 0x01, // antenna 2
@@ -740,7 +751,23 @@ mod tests {
                 0x00, // Phase
                 0x01  // Repeat
             ]
+    );
+
+    #[test]
+    fn test_parse_command_get_firmware_version() {
+        let cmd = Command::from_byte(
+            vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1],
+            &Command::GetFirmwareVersion,
+        )
+        .unwrap();
+        let expected_version = (70 as u8, 1 as u8);
+
+        assert!(
+            matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version)
         );
+
+        let err = Command::from_byte(vec![0x00], &Command::GetFirmwareVersion);
+        assert!(err.is_err());
     }
 
     #[test]
