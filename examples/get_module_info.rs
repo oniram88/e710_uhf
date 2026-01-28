@@ -1,7 +1,7 @@
 use e710_uhf::connector::Connector;
-use e710_uhf::frame::{Command, RfLinkProfile};
-use e710_uhf::frequency_references::{Spectrum, get_param};
-use log::{Level, LevelFilter, info, warn, debug};
+use e710_uhf::frame::command::Command;
+use e710_uhf::frequency_references::Spectrum;
+use log::{Level, LevelFilter, debug, info, warn};
 use std::io::Write;
 use std::net::TcpStream;
 use std::thread::sleep;
@@ -53,7 +53,7 @@ fn main() -> std::io::Result<()> {
 
     // Ciclo sui comandi
     for cmd in commands {
-        let response =connector.send_and_read_command(cmd).unwrap();
+        let response = connector.send_and_read_command(cmd).unwrap();
 
         // Lettura della risposta
         info!("Risposta ricevuta: {response}\n");
@@ -84,15 +84,13 @@ fn main() -> std::io::Result<()> {
         debug!("Waiting for tags...");
         if let Ok(results) = connector.read_fast_switching_antenna_read() {
             if results.len() > 0 {
-
                 for tag in results.iter() {
-                    info!("-  [{}] | {} | RSSI:{}",tag.antenna_id ,tag.epc, tag.rssi);
+                    info!("-  [{}] | {} | RSSI:{}", tag.antenna_id, tag.epc, tag.rssi);
                 }
 
                 info!("TOTALE: {} TAGS", results.len());
-
             }
-        }else{
+        } else {
             warn!("Error reading tags");
         }
         sleep(Duration::from_millis(30));

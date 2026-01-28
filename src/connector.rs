@@ -1,11 +1,11 @@
-use crate::frame::{
-    Command, CommandResult, Frame, FrameError, RfLinkProfile, SerializableCommand, Session, Target,
+use crate::frame::command::{
+    Command, CommandResult, RfLinkProfile, SerializableCommand, Session, Target,
 };
+use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
 use crate::tag_iterator;
 use log::{debug, error, info, warn};
-use std::cmp::PartialEq;
 use std::fmt;
 use std::io::{self, Read, Write};
 
@@ -301,13 +301,13 @@ where
         );
         self.send_command(&cmd)?;
 
-        let mut iter_tag = tag_iterator::tag_stream(self,&cmd, std::time::Duration::from_secs(0));
+        let mut iter_tag = tag_iterator::tag_stream(self, &cmd, std::time::Duration::from_secs(0));
 
         while let Some(res) = iter_tag.next() {
             match res {
                 Ok(tag) => {
                     out.push(tag);
-                },
+                }
                 Err(e) => error!("Error reading tags: {:?}", e),
             }
         }

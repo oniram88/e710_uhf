@@ -1,5 +1,5 @@
 use crate::connector::{Connector, ConnectorError};
-use crate::frame::{Command, CommandResult};
+use crate::frame::command::{Command, CommandResult};
 use crate::tag::Tag;
 use log::{debug, error};
 use std::collections::VecDeque;
@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 pub struct TagIterator<'a, P: Read + Write> {
     connector: &'a mut Connector<P>,
     sent_command: &'a Command,
-    counter: u32,
     last_emit: Instant,
     interval: Duration,
     buffer: VecDeque<Tag>,
@@ -65,7 +64,6 @@ pub(crate) fn tag_stream<'a, P: std::io::Read + std::io::Write>(
     TagIterator {
         connector,
         sent_command,
-        counter: 0,
         last_emit: Instant::now(),
         buffer: VecDeque::new(),
         interval,

@@ -196,7 +196,7 @@ pub fn get_param(frequency: f64) -> u8 {
     }
 }
 
-#[derive(Clone,Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Spectrum {
     FCC = 0x01,
     ETSI = 0x02,
