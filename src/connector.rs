@@ -8,6 +8,7 @@ use crate::tag_iterator;
 use log::{debug, error, info, warn};
 use std::fmt;
 use std::io::{self, Read, Write};
+use crate::tag_iterator::TagIterator;
 
 pub struct Connector<P>
 where
@@ -289,8 +290,7 @@ where
 
     ///
     /// Read with 1 repeat on the working antenna
-    pub fn read_fast_switching_antenna_read(&mut self) -> Result<Vec<Tag>, ConnectorError> {
-        let mut out = Vec::new();
+    pub fn new_fast_switching_antenna_iterator(&mut self) -> Result<TagIterator<P>, ConnectorError> {
         let cmd = Command::FastSwitchAntInventory(
             vec![(0, 1), (1, 1), (6, 1), (7, 1)],
             0,
@@ -299,19 +299,9 @@ where
             0,
             1,
         );
-        self.send_command(&cmd)?;
 
-        let mut iter_tag = tag_iterator::tag_stream(self, &cmd, std::time::Duration::from_secs(0));
+        let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
 
-        while let Some(res) = iter_tag.next() {
-            match res {
-                Ok(tag) => {
-                    out.push(tag);
-                }
-                Err(e) => error!("Error reading tags: {:?}", e),
-            }
-        }
-
-        Ok(out)
+        Ok(iter_tag)
     }
 }

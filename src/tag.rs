@@ -1,4 +1,6 @@
+use std::fmt::Display;
 use crate::frequency_references::get_frequency;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Rappresentazione di un tag
 #[derive(Debug, Clone)]
@@ -9,6 +11,7 @@ pub struct Tag {
     pub pc: String,
     pub rssi: u8,
     pub phase: (u8, u8),
+    pub received_at_ns: u64,
 }
 
 impl Tag {
@@ -23,6 +26,10 @@ impl Tag {
             phase: (raw[raw.len() - 3], raw[raw.len() - 2]),
             rssi: raw[raw.len() - 1],
             antenna_id,
+            received_at_ns: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_nanos() as u64,
         }
     }
 
@@ -37,6 +44,10 @@ impl Tag {
             phase: (0, 0),
             rssi: raw[raw.len() - 1],
             antenna_id,
+            received_at_ns: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_nanos() as u64,
         }
     }
 }
@@ -53,6 +64,12 @@ fn bytes_to_hex_upper(bytes: &[u8]) -> String {
 impl PartialEq<Self> for Tag {
     fn eq(&self, other: &Self) -> bool {
         self.epc == other.epc
+    }
+}
+
+impl Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] [{}] | {} | RSSI:{}",self.received_at_ns, self.antenna_id, self.epc, self.rssi)
     }
 }
 

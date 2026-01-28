@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 pub struct TagIterator<'a, P: Read + Write> {
     connector: &'a mut Connector<P>,
-    sent_command: &'a Command,
+    sent_command: Command,
     last_emit: Instant,
     interval: Duration,
     buffer: VecDeque<Tag>,
@@ -39,26 +39,34 @@ where
         }
 
         self.last_emit = Instant::now();
-
-        match self.connector.read_command(self.sent_command) {
-            Ok(response) => {
-                debug!("Risposta ricevuta: {response}\n");
-                if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
-                    self.buffer.extend(setted_values.0);
+        match self.connector.send_command(&self.sent_command){
+            Ok(()) => {
+                match self.connector.read_command(&self.sent_command) {
+                    Ok(response) => {
+                        debug!("Risposta ricevuta: {response}\n");
+                        if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
+                            self.buffer.extend(setted_values.0);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Risposta ricevuta con errori {e}");
+                    }
                 }
             }
             Err(e) => {
-                error!("Risposta ricevuta con errori {e}");
+                error!("Errore inviando comando {e}");
+                self.finished = true;
             }
         }
-        self.finished = true;
+
+
         self.buffer.pop_front().map(Ok)
     }
 }
 
 pub(crate) fn tag_stream<'a, P: std::io::Read + std::io::Write>(
     connector: &'a mut Connector<P>,
-    sent_command: &'a Command,
+    sent_command: Command,
     interval: Duration,
 ) -> TagIterator<'a, P> {
     TagIterator {
@@ -101,7 +109,7 @@ mod tests {
         let mut connector = Connector::new(cursor, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
         
         let cmd = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
-        let mut iterator = tag_stream(&mut connector, &cmd, Duration::from_millis(0));
+        let mut iterator = tag_stream(&mut connector, cmd, Duration::from_millis(0));
         
         let first = iterator.next();
         assert!(first.is_some());
@@ -136,7 +144,7 @@ mod tests {
         let mut connector = Connector::new(cursor, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
         
         let cmd = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
-        let iterator = tag_stream(&mut connector, &cmd, Duration::from_millis(0));
+        let iterator = tag_stream(&mut connector, cmd, Duration::from_millis(0));
         
         let tags: Vec<_> = iterator.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(tags.len(), 2);
@@ -158,7 +166,7 @@ mod tests {
         let mut connector = Connector::new(cursor, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
         
         let cmd = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
-        let mut iterator = tag_stream(&mut connector, &cmd, Duration::from_millis(0));
+        let mut iterator = tag_stream(&mut connector, cmd, Duration::from_millis(0));
         
         let first = iterator.next();
         assert!(first.is_none());

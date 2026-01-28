@@ -1,11 +1,20 @@
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::Command;
 use e710_uhf::frequency_references::Spectrum;
-use log::{Level, LevelFilter, debug, info, warn};
+use log::{Level, LevelFilter, debug, error, info, warn};
 use std::io::Write;
 use std::net::TcpStream;
 use std::thread::sleep;
-use std::time::Duration;
+use chrono::{DateTime, Utc};
+use std::time::{Duration, UNIX_EPOCH};
+
+fn ns_to_iso(ts_ns: u64) -> String {
+    let secs = ts_ns / 1_000_000_000;
+    let nanos = (ts_ns % 1_000_000_000) as u32;
+
+    let dt = DateTime::<Utc>::from(UNIX_EPOCH + Duration::new(secs, nanos));
+    dt.to_rfc3339()
+}
 
 fn logger_builder(level: LevelFilter) {
     let mut builder = env_logger::Builder::new();
@@ -82,16 +91,15 @@ fn main() -> std::io::Result<()> {
     info!("\n\n== Avvio lettore fast switching:");
     loop {
         debug!("Waiting for tags...");
-        if let Ok(results) = connector.read_fast_switching_antenna_read() {
-            if results.len() > 0 {
-                for tag in results.iter() {
-                    info!("-  [{}] | {} | RSSI:{}", tag.antenna_id, tag.epc, tag.rssi);
-                }
 
-                info!("TOTALE: {} TAGS", results.len());
+        let mut iter_tag = connector.new_fast_switching_antenna_iterator().unwrap();
+        while let Some(res) = iter_tag.next() {
+            match res {
+                Ok(tag) => {
+                    info!("- { } {tag}", ns_to_iso(tag.received_at_ns));
+                }
+                Err(e) => error!("Error reading tags: {:?}", e),
             }
-        } else {
-            warn!("Error reading tags");
         }
         sleep(Duration::from_millis(30));
     }
