@@ -15,7 +15,7 @@ where
     P: Read + Write,
 {
     port: P,
-    number_of_antennas: u8,
+    total_number_of_antennas: u8,
     /// Potenza di lavoro da 0 a 33 db
     /// con un solo valore andremo ad impostare su tutte le antenne la medesima potenza
     /// con più valori ogni antenna avrà la sua potenza distinta
@@ -63,14 +63,14 @@ where
     P: Read + Write,
 {
     pub fn new(
-        p0: P,
-        number_of_antennas: u8,
+        port: P,
+        total_number_of_antennas: u8,
         output_power: Vec<u8>,
         working_freq_setup: (Spectrum, f64, f64),
     ) -> Self {
         Connector {
-            port: p0,
-            number_of_antennas,
+            port ,
+            total_number_of_antennas:total_number_of_antennas,
             working_freq_setup,
             output_power,
         }
@@ -187,7 +187,7 @@ where
     //     &mut self,
     //     reference_frequency: f64,
     // ) -> Result<(), ConnectorError> {
-    //     for antenna_id in 0..self.number_of_antennas {
+    //     for antenna_id in 0..self.total_number_of_antennas {
     //         self.send_command(Command::SetWorkAntenna(antenna_id))?;
     //         self.read_command()?;
     //
@@ -214,7 +214,7 @@ where
     pub fn get_statistic_to_all_antennas(&mut self) -> Result<Vec<(u8, f64)>, ConnectorError> {
         let mut antennas: Vec<(u8, f64)> = vec![];
 
-        for antenna_id in 0..self.number_of_antennas {
+        for antenna_id in 0..self.total_number_of_antennas {
             self.send_and_read_command(Command::SetWorkAntenna(antenna_id))?;
 
             let response = self
