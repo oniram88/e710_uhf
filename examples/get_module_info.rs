@@ -94,7 +94,7 @@ fn main() -> std::io::Result<()> {
     loop {
         debug!("Waiting for tags...");
 
-        let mut iter_tag = connector.new_fast_switching_antenna_iterator().unwrap();
+        let mut iter_tag = connector.new_fast_switching_antenna_iterator(vec![(0, 1), (1, 1), (6, 1), (7, 1)]).unwrap();
         while let Some(res) = iter_tag.next() {
             match res {
                 Ok(tag) => {

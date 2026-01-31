@@ -5,10 +5,10 @@ use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
 use crate::tag_iterator;
+use crate::tag_iterator::TagIterator;
 use log::{debug, error, info, warn};
 use std::fmt;
 use std::io::{self, Read, Write};
-use crate::tag_iterator::TagIterator;
 
 pub struct Connector<P>
 where
@@ -69,8 +69,8 @@ where
         working_freq_setup: (Spectrum, f64, f64),
     ) -> Self {
         Connector {
-            port ,
-            total_number_of_antennas:total_number_of_antennas,
+            port,
+            total_number_of_antennas: total_number_of_antennas,
             working_freq_setup,
             output_power,
         }
@@ -290,15 +290,12 @@ where
 
     ///
     /// Read with 1 repeat on the working antenna
-    pub fn new_fast_switching_antenna_iterator(&mut self) -> Result<TagIterator<P>, ConnectorError> {
-        let cmd = Command::FastSwitchAntInventory(
-            vec![(0, 1), (1, 1), (6, 1), (7, 1)],
-            0,
-            Session::S1,
-            Target::A,
-            0,
-            1,
-        );
+    /// antenna_cfg: a vector of tuple antenna_id e stay
+    pub fn new_fast_switching_antenna_iterator(
+        &mut self,
+        antenna_cfg: Vec<(u8, u8)>,
+    ) -> Result<TagIterator<P>, ConnectorError> {
+        let cmd = Command::FastSwitchAntInventory(antenna_cfg, 0, Session::S1, Target::A, 0, 1);
 
         let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
 
