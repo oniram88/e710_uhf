@@ -1,4 +1,4 @@
-use e710_uhf::connector::Connector;
+use e710_uhf::connector::{Connector};
 use e710_uhf::frame::command::Command;
 use e710_uhf::frequency_references::Spectrum;
 use log::{Level, LevelFilter, debug, error, info, warn};
@@ -43,6 +43,8 @@ fn main() -> std::io::Result<()> {
 
     // Apertura della connessione TCP con un timeout
     let stream = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5))?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
 
     info!("Connesso con successo!");
 
