@@ -49,7 +49,7 @@ where
                         }
                     }
                     Err(e) => {
-                        error!("Risposta ricevuta con errori {e}");
+                        return Some(Err(e));
                     }
                 }
             }
