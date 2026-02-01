@@ -55,6 +55,34 @@ pub enum Target {
     B = 0x01,
 }
 
+/// BeeperMode
+///
+/// 0x00 Quiet
+/// 0x01 Beep after every inventory round if tag(s) identified.
+/// 0x02 Beep after every tag has identified.
+///
+/// Warning:
+///   Buzzer behavior 0x02(Beep after every tag has identified) occupies CPU
+///   process time that affects anti-collision algorithm significantly. It is
+///   recommended that this option should be used for tag test.
+///
+#[derive(Clone, Debug, PartialEq)]
+pub enum BeeperMode{
+    Quiet = 0x00,
+    BeepAfterEveryInventoryRoundIfTagIdentified = 0x01,
+    BeepAfterEveryTagHasIdentified = 0x02,
+}
+
+impl Display for BeeperMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeeperMode::Quiet => write!(f, "Quiet"),
+            BeeperMode::BeepAfterEveryInventoryRoundIfTagIdentified => write!(f, "Beep after every inventory round if tag(s) identified."),
+            BeeperMode::BeepAfterEveryTagHasIdentified => write!(f, "Beep after every tag has identified."),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Command {
     Reset,
@@ -72,7 +100,8 @@ pub enum Command {
     GetOutputPower,
     SetDefaultFrequencyRegion(Spectrum, f64, f64), // use default frequencies
     GetFrequencyRegion,
-    // SetBeeperMode,
+    /// [SetBeeperMode] Imposta il tipo di beeper da utilizzare.
+    SetBeeperMode(BeeperMode),
     GetReaderTemperature,
     // ReadGpioValue,
     // WriteGpioValue,
@@ -147,6 +176,7 @@ pub enum CommandResult {
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
     SetWorkAntenna(Result<(), FrameError>),
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
+    SetBeeperMode(Result<BeeperMode,FrameError>),
     GetReaderTemperature(Result<f64, FrameError>),
     /// [GetOutputPower]
     /// Ritorna l'array della potenza di output delle antenne,
@@ -194,6 +224,7 @@ impl Display for Command {
             Command::SetWorkAntenna(pos) => write!(f, "Set Work Antenna to {}", pos),
             Command::GetWorkAntenna => write!(f, "Work Antenna"),
             Command::GetFirmwareVersion => write!(f, "Firmware Version"),
+            Command::SetBeeperMode(mode) => write!(f, "Set Beeper Mode to {:?}", mode),
             Command::GetReaderTemperature => write!(f, "Temperature"),
             Command::SetOutputPower(v) => {
                 if v.len() == 1 {
@@ -261,6 +292,8 @@ impl Display for CommandResult {
             CommandResult::GetWorkAntenna(Err(err)) => {
                 write!(f, "Failed to get Work Antenna: {}", err)
             }
+            CommandResult::SetBeeperMode(Ok(beeper_mode)) => write!(f, "Beeper Mode set successfully to {beeper_mode}"),
+            CommandResult::SetBeeperMode(Err(err)) => write!(f, "Failed to set Beeper Mode: {}", err),
             CommandResult::GetReaderTemperature(Ok(tmp)) => write!(f, "Temperature [{tmp} °C]"),
             CommandResult::GetReaderTemperature(Err(err)) => {
                 write!(f, "Failed to get Temperature: {}", err)
@@ -386,6 +419,7 @@ impl SerializableCommand for Command {
             }
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
+            Command::SetBeeperMode(v)=>vec![0x7A,v.clone() as u8],
             Command::GetReaderTemperature => vec![0x7B],
             Command::SetOutputPower(v) => {
                 let mut out = vec![0x76];
@@ -506,6 +540,16 @@ impl SerializableCommand for Command {
                     0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
                     0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
                     0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
+                    0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(
+                        data,
+                        |_| {
+                            if let Command::SetBeeperMode(beeper_mode) = sent_command {
+                              Ok(beeper_mode.clone())
+                            }else{
+                                Err(FrameError::ResponseNotExpected(raw.clone()))
+                            }
+                        }
+                    ))),
                     0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
                         data,
                         |data: Vec<u8>| {
@@ -736,6 +780,9 @@ mod tests {
         set_work_antenna_1 => Command::SetWorkAntenna(1) => vec![0x74, 0x01],
         get_work_antenna => Command::GetWorkAntenna => vec![0x75],
         get_firmware_version => Command::GetFirmwareVersion => vec![0x72],
+        set_beeper_mode_quiet => Command::SetBeeperMode(BeeperMode::Quiet) => vec![0x7A,0x00],
+        set_beeper_mode_every_tag => Command::SetBeeperMode(BeeperMode::BeepAfterEveryTagHasIdentified) => vec![0x7A,0x02],
+        set_beeper_mode_every_inventory => Command::SetBeeperMode(BeeperMode::BeepAfterEveryInventoryRoundIfTagIdentified) => vec![0x7A,0x01],
         get_reader_temperature => Command::GetReaderTemperature => vec![0x7B],
         set_output_power => Command::SetOutputPower(vec![0x22]) => vec![0x76,0x22],
         get_output_power => Command::GetOutputPower => vec![0x77],
