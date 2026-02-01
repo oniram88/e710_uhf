@@ -2,6 +2,7 @@
 name = "e710_uhf"
 version = "0.1.0"
 edition = "2024"
+exclude = ["docs/"]
 
 [dependencies]
 log = "0.4.29"
