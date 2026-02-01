@@ -67,7 +67,7 @@ pub enum Target {
 ///   recommended that this option should be used for tag test.
 ///
 #[derive(Clone, Debug, PartialEq)]
-pub enum BeeperMode{
+pub enum BeeperMode {
     Quiet = 0x00,
     BeepAfterEveryInventoryRoundIfTagIdentified = 0x01,
     BeepAfterEveryTagHasIdentified = 0x02,
@@ -77,8 +77,27 @@ impl Display for BeeperMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BeeperMode::Quiet => write!(f, "Quiet"),
-            BeeperMode::BeepAfterEveryInventoryRoundIfTagIdentified => write!(f, "Beep after every inventory round if tag(s) identified."),
-            BeeperMode::BeepAfterEveryTagHasIdentified => write!(f, "Beep after every tag has identified."),
+            BeeperMode::BeepAfterEveryInventoryRoundIfTagIdentified => {
+                write!(f, "Beep after every inventory round if tag(s) identified.")
+            }
+            BeeperMode::BeepAfterEveryTagHasIdentified => {
+                write!(f, "Beep after every tag has identified.")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PhaseStatus {
+    Off = 0x00,
+    On = 0x01,
+}
+
+impl Display for PhaseStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PhaseStatus::Off => write!(f, "Phase => Off"),
+            PhaseStatus::On => write!(f, "Phase => On"),
         }
     }
 }
@@ -138,7 +157,7 @@ pub enum Command {
     ///   RF output will be canceled, thus power consumption and heat generation are both reduced.
     /// - Session
     /// - Target
-    /// - Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+    /// - Phase Status
     /// - Repeat the inventory with above ant switch sequence.
     FastSwitchAntInventory(
         // Tuple con antenna_id e stay
@@ -150,8 +169,8 @@ pub enum Command {
         // RF output will be canceled, thus power consumption and heat generation are both reduced.
         Session,
         Target,
-        u8, // Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
-        u8, // Repeat the inventory with above ant switch sequence.
+        PhaseStatus,
+        u8,   // Repeat the inventory with above ant switch sequence.
     ),
     // Read
     // Write
@@ -176,7 +195,7 @@ pub enum CommandResult {
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
     SetWorkAntenna(Result<(), FrameError>),
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
-    SetBeeperMode(Result<BeeperMode,FrameError>),
+    SetBeeperMode(Result<BeeperMode, FrameError>),
     GetReaderTemperature(Result<f64, FrameError>),
     /// [GetOutputPower]
     /// Ritorna l'array della potenza di output delle antenne,
@@ -264,8 +283,8 @@ impl Display for Command {
                 repeat, // Repeat the inventory with above ant switch sequence.
             ) => write!(
                 f,
-                "Fast Switch Antenna Inventory for antennas: {:?} rest: {:?} session: {:?} target: {:?} phase: {:?} repeat: {:?}",
-                antennas, rest, session, target, phase, repeat
+                "Fast Switch Antenna Inventory for antennas: {:?} rest: {:?} session: {:?} target: {:?} phase: {phase} repeat: {:?}",
+                antennas, rest, session, target, repeat
             ),
         }
     }
@@ -292,8 +311,12 @@ impl Display for CommandResult {
             CommandResult::GetWorkAntenna(Err(err)) => {
                 write!(f, "Failed to get Work Antenna: {}", err)
             }
-            CommandResult::SetBeeperMode(Ok(beeper_mode)) => write!(f, "Beeper Mode set successfully to {beeper_mode}"),
-            CommandResult::SetBeeperMode(Err(err)) => write!(f, "Failed to set Beeper Mode: {}", err),
+            CommandResult::SetBeeperMode(Ok(beeper_mode)) => {
+                write!(f, "Beeper Mode set successfully to {beeper_mode}")
+            }
+            CommandResult::SetBeeperMode(Err(err)) => {
+                write!(f, "Failed to set Beeper Mode: {}", err)
+            }
             CommandResult::GetReaderTemperature(Ok(tmp)) => write!(f, "Temperature [{tmp} °C]"),
             CommandResult::GetReaderTemperature(Err(err)) => {
                 write!(f, "Failed to get Temperature: {}", err)
@@ -419,7 +442,7 @@ impl SerializableCommand for Command {
             }
             Command::GetWorkAntenna => vec![0x75],
             Command::GetFirmwareVersion => vec![0x72],
-            Command::SetBeeperMode(v)=>vec![0x7A,v.clone() as u8],
+            Command::SetBeeperMode(v) => vec![0x7A, v.clone() as u8],
             Command::GetReaderTemperature => vec![0x7B],
             Command::SetOutputPower(v) => {
                 let mut out = vec![0x76];
@@ -473,7 +496,7 @@ impl SerializableCommand for Command {
                 v.push(session.clone() as u8);
                 v.push(target.clone() as u8);
                 v.extend(vec![0x00, 0x00, 0x00]); // Reserved bytes
-                v.push(phase.clone());
+                v.push(phase.clone() as u8);
                 v.push(repeat.clone());
                 v
             }
@@ -540,16 +563,13 @@ impl SerializableCommand for Command {
                     0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
                     0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
                     0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
-                    0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(
-                        data,
-                        |_| {
-                            if let Command::SetBeeperMode(beeper_mode) = sent_command {
-                              Ok(beeper_mode.clone())
-                            }else{
-                                Err(FrameError::ResponseNotExpected(raw.clone()))
-                            }
+                    0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(data, |_| {
+                        if let Command::SetBeeperMode(beeper_mode) = sent_command {
+                            Ok(beeper_mode.clone())
+                        } else {
+                            Err(FrameError::ResponseNotExpected(raw.clone()))
                         }
-                    ))),
+                    }))),
                     0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
                         data,
                         |data: Vec<u8>| {
@@ -692,10 +712,10 @@ fn parse_tag_response(
                 ));
             }
             // Situazione con tag da parsare
-            (_, &Command::FastSwitchAntInventory(_, _, _, _, 0x00, _)) => {
+            (_, &Command::FastSwitchAntInventory(_, _, _, _, PhaseStatus::Off, _)) => {
                 tags.push(Tag::from_raw(&data));
             }
-            (_, &Command::FastSwitchAntInventory(_, _, _, _, 0x01, _)) => {
+            (_, &Command::FastSwitchAntInventory(_, _, _, _, PhaseStatus::On, _)) => {
                 tags.push(Tag::from_raw_with_phase(&data));
             }
             _ => {
@@ -799,7 +819,7 @@ mod tests {
             0,
             Session::S1,
             Target::A,
-            0,
+            PhaseStatus::Off,
             1
         ) => vec![
                 0x8A, // tuple antenna + stay
@@ -961,7 +981,7 @@ mod tests {
                 0,
                 Session::S0,
                 Target::A,
-                0, // Phase disattivata
+                PhaseStatus::Off, // Phase disattivata
                 0,
             ),
         )
@@ -996,7 +1016,7 @@ mod tests {
                 0,
                 Session::S0,
                 Target::A,
-                1, // Phase disattivata
+                PhaseStatus::On, // Phase disattivata
                 0,
             ),
         )
@@ -1027,7 +1047,7 @@ mod tests {
                 0,
                 Session::S0,
                 Target::A,
-                0, // Phase disattivata
+                PhaseStatus::Off, // Phase disattivata
                 0,
             ),
         )
