@@ -49,7 +49,6 @@ fn calculate_checksum(buff: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::command::{Session, Target};
 
     #[test]
     fn test_checksum() {
