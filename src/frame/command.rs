@@ -143,12 +143,12 @@ pub enum Command {
     ///
     /// - Session
     /// - Target
-    /// - Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+    /// - Phase Value; PhaseStatus
     /// - Repeat the inventory with above ant switch sequence.
     CustomizeSessionTargetInventory(
         Session,
         Target,
-        u8, // Phase Value; 00 for turn it off; 01 for turn it on. [CODED to 0x00]
+        PhaseStatus,
         u8, // Repeat the inventory with above ant switch sequence.
     ),
     ///
@@ -170,7 +170,7 @@ pub enum Command {
         Session,
         Target,
         PhaseStatus,
-        u8,   // Repeat the inventory with above ant switch sequence.
+        u8, // Repeat the inventory with above ant switch sequence.
     ),
     // Read
     // Write
@@ -469,13 +469,13 @@ impl SerializableCommand for Command {
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 vec![0x7E, get_param(*reference_frequency)]
             }
-            Command::CustomizeSessionTargetInventory(session, target, _phase, repeat) => {
+            Command::CustomizeSessionTargetInventory(session, target, phase, repeat) => {
                 vec![
                     0x8B,
                     session.clone() as u8,
                     target.clone() as u8,
                     0x00, // SL a 0 Select Flag; range from: 00,01,02,03
-                    0x00, // Phase Value; 00 for turn it off; 01 for turn it on. [SE usiamo il parametro dobbiam parsare in modo diverso il risultato]
+                    phase.clone() as u8, // Phase Value; 00 for turn it off; 01 for turn it on. [SE usiamo il parametro dobbiam parsare in modo diverso il risultato]
                     repeat.clone(),
                 ]
             }
@@ -813,8 +813,9 @@ mod tests {
         set_rf_link_profile => Command::SetRfLinkProfile(RfLinkProfile::Tari25usMiller4KHz250) => vec![0x69, 0xD1],
         get_rf_link_profile => Command::GetRfLinkProfile => vec![0x6A],
         get_rf_port_return_loss => Command::GetRfPortReturnLoss(923.50) => vec![0x7E, 0x32],
-        customize_session_target_inventory => Command::CustomizeSessionTargetInventory(Session::S1,Target::A,0,1)=> vec![0x8B,0x01,0x00,0x00,0x00,0x01],
-        fast_switching_ant_intentory => Command::FastSwitchAntInventory(
+        customize_session_target_inventory_phase_off => Command::CustomizeSessionTargetInventory(Session::S1,Target::A,PhaseStatus::Off,1)=> vec![0x8B,0x01,0x00,0x00,0x00,0x01],
+        customize_session_target_inventory_phase_on => Command::CustomizeSessionTargetInventory(Session::S1,Target::A,PhaseStatus::On,1)=> vec![0x8B,0x01,0x00,0x00,0x01,0x01],
+        fast_switching_ant_intentory_phase_off => Command::FastSwitchAntInventory(
             vec![(0, 1), (1, 1), (6, 1), (7, 1)],
             0,
             Session::S1,
@@ -837,6 +838,31 @@ mod tests {
                 0x00, // Target
                 0x00, 0x00, 0x00, // Reserved bytes
                 0x00, // Phase
+                0x01  // Repeat
+            ],
+                fast_switching_ant_intentory_phase_on => Command::FastSwitchAntInventory(
+            vec![(0, 1), (1, 1), (6, 1), (7, 1)],
+            0,
+            Session::S1,
+            Target::A,
+            PhaseStatus::On,
+            1
+        ) => vec![
+                0x8A, // tuple antenna + stay
+                0x00, 0x01, // antenna 1
+                0x01, 0x01, // antenna 2
+                0x06, 0x01, // antenna 7
+                0x07, 0x01, // antenna 8
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x08, 0x00, // ignore antenna
+                0x00, // interval
+                0x00, 0x00, 0x00, 0x00, 0x00, // Reserved bytes
+                0x01, // Session
+                0x00, // Target
+                0x00, 0x00, 0x00, // Reserved bytes
+                0x01, // Phase
                 0x01  // Repeat
             ]
     );
@@ -936,7 +962,7 @@ mod tests {
             &Command::CustomizeSessionTargetInventory(
                 Session::S0,
                 Target::A,
-                0, // in questo modo phase è disabilitata e il pacchetto di ritorno avrà impostato (0,0)
+                PhaseStatus::Off, // in questo modo phase è disabilitata e il pacchetto di ritorno avrà impostato (0,0)
                 0,
             ),
         )

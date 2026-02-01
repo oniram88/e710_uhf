@@ -309,7 +309,7 @@ where
         let response = self.send_and_read_command(Command::CustomizeSessionTargetInventory(
             Session::S1,
             Target::A,
-            0,
+            PhaseStatus::Off,
             1,
         ))?;
         debug!("Risposta ricevuta: {response}\n");

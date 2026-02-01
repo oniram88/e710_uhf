@@ -91,7 +91,7 @@ pub(crate) fn tag_stream<'a, P: std::io::Read + std::io::Write>(
 mod tests {
     use super::*;
     use crate::connector::Connector;
-    use crate::frame::command::{Command, Session, Target};
+    use crate::frame::command::{Command, PhaseStatus, Session, Target};
     use crate::frequency_references::Spectrum;
     use std::collections::VecDeque;
     use std::io::{Read, Result, Write};
@@ -170,7 +170,7 @@ mod tests {
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
 
-        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
 
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
@@ -226,7 +226,7 @@ mod tests {
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
 
-        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
 
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
@@ -242,7 +242,7 @@ mod tests {
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
 
-        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
 
         let interval = Duration::from_millis(100);
         let mut iterator = tag_stream(&mut connector, command, interval);
