@@ -332,7 +332,7 @@ where
     pub fn new_fast_switching_antenna_iterator(
         &mut self,
         antenna_cfg: Vec<(u8, u8)>,
-    ) -> Result<TagIterator<P>, ConnectorError> {
+    ) -> Result<TagIterator<'_, P>, ConnectorError> {
         let cmd = Command::FastSwitchAntInventory(antenna_cfg, 0, Session::S1, Target::A, 1, 1);
 
         let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));

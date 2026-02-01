@@ -355,6 +355,7 @@ macro_rules! parse_response {
     };
 
     ($data:expr, ($min:expr, $max:expr), $success_block:expr) => {
+        #[allow(unused_comparisons)]
         if $data[0] >= $min && $data[0] <= $max {
             $success_block($data)
         } else {
@@ -664,9 +665,9 @@ fn parse_tag_response(
 
 #[derive(Debug)]
 pub struct ReadResult {
-    antenna_id: u8,
-    read_rate: u32,
-    total_read: u32,
+    pub antenna_id: u8,
+    pub read_rate: u32,
+    pub total_read: u32,
 }
 
 fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
