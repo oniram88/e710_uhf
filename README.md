@@ -1,41 +1,120 @@
-### Connection through Ethernet
+# E710 UHF RFID Library
+
+A Rust library for interacting with E710 UHF RFID modules. This crate provides a high-level API for configuring the reader and performing inventory operations (tag reading).
+
+## Features
+
+- **High-level API**: Easy to use `Connector` for managing the reader and its parameters.
+- **TCP/IP Support**: Built-in support for Ethernet-based readers using standard TCP streams.
+- **Comprehensive Command Set**:
+    - Firmware version retrieval.
+    - Antenna management (Set/Get work antenna, connection detection).
+    - Power and Frequency configuration (supports FCC, ETSI, CHN, and CUSTOM spectrums).
+    - Real-time monitoring: Temperature and VSWR (Return Loss).
+    - RF Link Profile selection.
+- **Performance Inventory**:
+    - Single antenna reading.
+    - Fast switching antenna inventory for high-speed tag collection across multiple antennas.
+- **Iterator-based API**: Efficiently process tags as they arrive with a clean iterator interface.
+
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+e710_uhf = { git = "https://github.com/marinomancini/e710_uhf" } # Replace with actual repository URL if different
+```
+
+## Quick Start
+
+The following example demonstrates how to connect to a reader, set it up, and start a fast switching inventory.
+
+```rust
+use e710_uhf::connector::Connector;
+use e710_uhf::frame::command::Command;
+use e710_uhf::frequency_references::Spectrum;
+use std::net::TcpStream;
+use std::time::Duration;
+
+fn main() -> std::io::Result<()> {
+    // Reader IP and port (usually 4001 for TCP)
+    let addr = "192.168.0.178:4001";
+    let stream = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5))?;
+    
+    // Create connector: 
+    // - stream: the TCP connection
+    // - total_antennas: 8
+    // - output_power: 25 dBm
+    // - frequency: ETSI spectrum, from 865.0 to 868.0 MHz
+    let mut connector = Connector::new(stream, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
+    
+    // Initialize the reader with the provided settings
+    connector.setup_reader().expect("Failed to setup reader");
+
+    // Retrieve firmware version
+    let version = connector.send_and_read_command(Command::GetFirmwareVersion).unwrap();
+    println!("Firmware Version: {}", version);
+
+    // Build configuration for fast switching between antennas
+    // stay_time_multiplier: 1
+    let cfgs = connector.build_fast_switching_antenna_cfg(1).unwrap();
+    
+    // Start inventory
+    let mut iter_tag = connector.new_fast_switching_antenna_iterator(cfgs).unwrap();
+    
+    println!("Starting inventory...");
+    while let Some(res) = iter_tag.next() {
+        match res {
+            Ok(tag) => println!("Read Tag: {}", tag),
+            Err(e) => eprintln!("Error reading tag: {:?}", e),
+        }
+    }
+
+    Ok(())
+}
+```
+
+## Ethernet Connection Configuration (Linux)
+
+When connecting directly to the module via Ethernet, you may need to manually configure your network interface to match the module's expectations (often 10Mbps Half-Duplex).
+
 ```shell
+# Configure interface speed and duplex
 sudo ethtool -s enp8s0 speed 10 duplex half autoneg off
+
+# Restart the interface
 sudo ip link set enp8s0 down
 sudo ip link set enp8s0 up
+
+# Verify state is UP
 ip link show enp8s0
-
-```
-risultato:
-```shell
-2: enp8s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
-link/ether bc:fc:e7:1a:8d:36 brd ff:ff:ff:ff:ff:ff
 ```
 
-deve essere state UP
+### ARP Table Population
 
+If the reader is not responding, ensure your host has an ARP entry for it. Pinging the device usually resolves this:
 
-#### Passaggio ARP
 ```shell
+# Check current ARP table
 arp -n
 
-Address                  HWtype  HWaddress           Flags Mask            Iface
-172.20.0.2               ether   8a:bc:01:58:6e:03   C                     br-d93f7c90443a
-192.168.178.1            ether   3c:37:12:41:15:68   C                     wlp9s0
-
+# Ping the reader (default IP is often 192.168.0.178)
 ping -c 1 192.168.0.178
 
-PING 192.168.0.178 (192.168.0.178) 56(84) bytes of data.
-64 bytes from 192.168.0.178: icmp_seq=1 ttl=128 time=0.603 ms
-
---- 192.168.0.178 ping statistics ---
-1 packets transmitted, 1 received, 0% packet loss, time 0ms
-rtt min/avg/max/mdev = 0.603/0.603/0.603/0.000 ms
-
+# Verify the MAC address is now present
 arp -n
-Address                  HWtype  HWaddress           Flags Mask            Iface
-172.20.0.2               ether   8a:bc:01:58:6e:03   C                     br-d93f7c90443a
-192.168.178.1            ether   3c:37:12:41:15:68   C                     wlp9s0
-192.168.0.178            ether   50:54:7b:b4:1f:51   C                     enp8s0
 ```
+
+## Documentation
+
+The project includes extensive documentation and SDKs in the `docs/` directory:
+- **Serial Interface Protocol**: Detailed documentation of the M70x-Module protocol.
+- **TCP-IP Configuration**: Guides for network setup.
+- **SDKs**: Android, C#, and Java SDK samples.
+- **PC Demo Software**: C# based demo application for testing.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
