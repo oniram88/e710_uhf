@@ -208,6 +208,44 @@ where
     //     Ok(())
     // }
 
+
+
+    ///   Builds a configuration for fast switching between antennas based on VSWR (Voltage Standing Wave Ratio).
+    ///
+    ///   The method filters out antennas with a VSWR value equal to or higher than 2.0 and assigns a
+    ///   default "stay time" for the remaining antennas. The configuration is returned as a vector of
+    ///   tuples containing the antenna ID and the default stay time.
+    ///
+    ///   # Parameters
+    ///
+    ///   * `default_stay` - A `u8` value that represents the default duration to stay on each antenna in the returned configuration.
+    ///
+    ///   # Returns
+    ///
+    ///   Returns a `Result`:
+    ///
+    ///   * `Ok(Vec<(u8, u8)>)` - A vector of tuples. Each tuple contains:
+    ///       - `u8`: The antenna ID.
+    ///       - `u8`: The default stay time.
+    ///   * `Err(ConnectorError)` - An error occurs if retrieving statistics for the antennas fails.
+    ///
+    pub fn build_fast_switching_antenna_cfg(
+        &mut self,
+        default_stay: u8,
+    ) -> Result<Vec<(u8, u8)>, ConnectorError> {
+        let mut out = vec![];
+        let antennas = self.get_statistic_to_all_antennas()?;
+
+        for (id_antenna, vswr) in antennas.iter() {
+            // threshold per eliminare le antenne con vswr troppo alto
+            if *vswr < 2.0 {
+                out.push((*id_antenna, default_stay));
+            }
+        }
+
+        Ok(out)
+    }
+
     ///
     /// Return VSWR for every antenna
     ///

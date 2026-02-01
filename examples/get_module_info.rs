@@ -90,11 +90,15 @@ fn main() -> std::io::Result<()> {
     //     sleep(Duration::from_millis(30));
     // }
 
+    info!("Build automatic antennas_cfgs");
+    let cfgs = connector.build_fast_switching_antenna_cfg(1).unwrap();
+    info!("Configuration: {:#?}", cfgs);
+
     info!("\n\n== Avvio lettore fast switching:");
     loop {
         debug!("Waiting for tags...");
 
-        let mut iter_tag = connector.new_fast_switching_antenna_iterator(vec![(0, 1), (1, 1), (6, 1), (7, 1)]).unwrap();
+        let mut iter_tag = connector.new_fast_switching_antenna_iterator(cfgs.clone()).unwrap();
         while let Some(res) = iter_tag.next() {
             match res {
                 Ok(tag) => {
