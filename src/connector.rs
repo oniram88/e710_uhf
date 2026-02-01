@@ -122,7 +122,7 @@ where
 
     pub fn setup_reader(&mut self) -> Result<(), ConnectorError> {
         info!("\n\n== Controllo antenna detection:");
-        self.set_ant_connection_detector_if_not(0x03).unwrap(); // TODO configurable
+        self.set_ant_connection_detector_if_not(0x03).unwrap(); // TODO configurable, ma terrei attivo in modo che il fast switching rilevi errori di connessione
 
         info!("\n\n== Controllo frequenza:");
         self.set_frequency_if_not(
