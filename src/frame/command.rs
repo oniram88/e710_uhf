@@ -579,6 +579,12 @@ impl SerializableCommand for Command {
     }
 }
 
+///
+/// Split frame to base elements:
+/// - length
+/// - raw_command identification
+/// - checksum
+/// - data (from byte 4 to length - 1)
 fn split_in_base_frame_parts(raw: &[u8]) -> (usize, u8, u8, Vec<u8>) {
     let length = raw[1] as usize;
     let raw_command = raw[3];
@@ -641,6 +647,12 @@ fn parse_tag_response(
                 ));
             }
             // Situazione con tag da parsare
+            (_, Command::FastSwitchAntInventory(_a,_b,_c,_d,0x00,_f)) => {
+                tags.push(Tag::from_raw(&data));
+            }
+            (_, Command::FastSwitchAntInventory(_a,_b,_c,_d,0x01,_f)) => {
+                tags.push(Tag::from_raw_with_phase(&data));
+            }
             _ => {
                 tags.push(Tag::from_raw(&data));
             }
@@ -873,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_fast_switrching_tag_response() {
+    fn test_parse_fast_switching_tag_response() {
         let raw_packet = vec![
             0xA0, 0x13, 0x01, 0x8A, 0x18, 0x30, 0x00, // header 1
             0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x50, 0x1D, 0x63, 0xE2, 0x9C, 0x4F, // epc
@@ -916,6 +928,37 @@ mod tests {
         assert_eq!(result.0[2].epc, "E28069150000401D63E3284F".to_string());
         assert_eq!(result.0[3].epc, "E28069150000501D63E2A04F".to_string());
         assert_eq!(result.0[4].epc, "E28069150000401D63E2A44F".to_string());
+    }
+
+    #[test]
+    fn test_parse_fast_switching_tag_response_with_phase() {
+        let raw_packet = vec![
+            0xA0,0x15,0x01,0x8A,0x00,0x34,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x96,0x41,0x47,0x01,0xD8,0x95,
+            0xA0,0x15,0x01,0x8A,0x00,0x30,0x00,0x30,0x39,0x5D,0xFA,0x82,0xE3,0x79,0x00,0x00,0x30,0x57,0xA4,0x4E,0x00,0x87,0xF2,
+            0xA0,0x15,0x01,0x8A,0x00,0x34,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x96,0x31,0x48,0x0E,0x35,0x3A,
+            0xA0,0x0A,0x01,0x8A,0x00,0x00,0x03,0x00,0x00,0x00,0x28,0xA0
+        ];
+
+        let result = parse_tag_response(
+            raw_packet,
+            &Command::FastSwitchAntInventory(
+                vec![(1, 1)],
+                0,
+                Session::S0,
+                Target::A,
+                1, // Phase disattivata
+                0,
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(result.1.antenna_id, 0); // in questo caso non è ritornata
+        assert_eq!(result.1.total_read, 3);
+        assert_eq!(result.1.read_rate, 0x0D); // lo calcoliamo dividendo il tempo della durata con il numero totali di letture in ms
+        assert_eq!(result.0.len(), 3);
+        assert_eq!(result.0[0].epc, "000000000000000000009641".to_string());
+        assert_eq!(result.0[1].epc, "30395DFA82E37900003057A4".to_string());
+        assert_eq!(result.0[2].epc, "000000000000000000009631".to_string());
     }
 
     #[test]
