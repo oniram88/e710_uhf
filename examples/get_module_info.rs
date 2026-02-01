@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use e710_uhf::connector::Connector;
-use e710_uhf::frame::command::Command;
+use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
 use log::{Level, LevelFilter, debug, error, info};
 use std::io::Write;
