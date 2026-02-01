@@ -329,7 +329,7 @@ where
         &mut self,
         antenna_cfg: Vec<(u8, u8)>,
     ) -> Result<TagIterator<'_, P>, ConnectorError> {
-        let cmd = Command::FastSwitchAntInventory(antenna_cfg, 0, Session::S1, Target::A, PhaseStatus::On, 1);
+        let cmd = Command::FastSwitchAntInventory(antenna_cfg, 0, Session::S1, Target::A, PhaseStatus::Off, 1);
 
         let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
 
