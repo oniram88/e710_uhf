@@ -153,15 +153,13 @@ mod tests {
         assert_eq!(antenna_choosing, Some(1));
 
 
-        let raw = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x15, 0x22, 0x00];
-        let (rssi, antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x54);
-        assert_eq!(rssi, 0x54);
-        assert_eq!(antenna_choosing, Some(0));
+        let (_rssi, _antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x54);
+        assert_eq!(_rssi, 0x54);
+        assert_eq!(_antenna_choosing, Some(0));
 
-        let raw = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x15, 0x22, 0x00];
-        let (rssi, antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x00);
-        assert_eq!(rssi, 0x00);
-        assert_eq!(antenna_choosing, None);
+        let (_rssi, _antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x00);
+        assert_eq!(_rssi, 0x00);
+        assert_eq!(_antenna_choosing, None);
     }
 
 
