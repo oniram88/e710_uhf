@@ -608,34 +608,42 @@ fn parse_tag_response(
         }
 
         // Questo è il pacchetto con i totali finali
-        if length == 0x0A {
-            match sent_command {
-                Command::FastSwitchAntInventory(..) => {
-                    let total_read = u32::from_be_bytes([0x00, data[0], data[1], data[2]]);
-                    let duration = u32::from_be_bytes(data[3..7].try_into().unwrap());
-                    let read_rate = if total_read > 0 {
-                        duration / total_read
-                    } else {
-                        0
-                    };
-                    result = ReadResult {
-                        antenna_id: 0x00,
-                        total_read,
-                        read_rate,
-                    }
+        match (length, sent_command) {
+            (0x0A, Command::FastSwitchAntInventory(..)) => {
+                let total_read = u32::from_be_bytes([0x00, data[0], data[1], data[2]]);
+                let duration = u32::from_be_bytes(data[3..7].try_into().unwrap());
+                let read_rate = if total_read > 0 {
+                    duration / total_read
+                } else {
+                    0
+                };
+                result = ReadResult {
+                    antenna_id: 0x00,
+                    total_read,
+                    read_rate,
                 }
-                Command::CustomizeSessionTargetInventory(..) => {
-                    // Ultimo frame di check
-                    result = ReadResult {
-                        antenna_id: frame[4],
-                        read_rate: u32::from_be_bytes([0x00, 0x00, frame[5], frame[6]]),
-                        total_read: u32::from_be_bytes([frame[7], frame[8], frame[9], frame[10]]),
-                    }
-                }
-                _ => {}
             }
-        } else {
-            tags.push(Tag::from_raw(&data));
+            (0x0A, Command::CustomizeSessionTargetInventory(..)) => {
+                // Ultimo frame di check
+                result = ReadResult {
+                    antenna_id: frame[4],
+                    read_rate: u32::from_be_bytes([0x00, 0x00, frame[5], frame[6]]),
+                    total_read: u32::from_be_bytes([frame[7], frame[8], frame[9], frame[10]]),
+                }
+            }
+            // In caso di fast switching questo è un errore, e la configurazione delle antenne non è
+            // correttamente impostata
+            (0x05, Command::FastSwitchAntInventory(a, ..)) => {
+                return Err(FrameError::FastSwitchingAntConfiguration(
+                    ErrorCode::from_hex(data[1]),
+                    data[0],
+                    a.clone(),
+                ));
+            }
+            // Situazione con tag da parsare
+            _ => {
+                tags.push(Tag::from_raw(&data));
+            }
         }
     }
 

@@ -44,8 +44,16 @@ where
                 match self.connector.read_command(&self.sent_command) {
                     Ok(response) => {
                         debug!("Risposta ricevuta: {response}\n");
-                        if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
-                            self.buffer.extend(setted_values.0);
+                        match response {
+                            CommandResult::ResponsePackets(Ok(setted_values)) =>{
+                                self.buffer.extend(setted_values.0);
+                            }
+                            CommandResult::ResponsePackets(Err(e))=>{
+                                return Some(Err(ConnectorError::from(e)));
+                            }
+                            _=>{
+                                unreachable!();
+                            }
                         }
                     }
                     Err(e) => {

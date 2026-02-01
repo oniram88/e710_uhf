@@ -12,6 +12,8 @@ pub enum FrameError {
     TagParsingError(Vec<u8>),
     InvalidChecksum,
     InvalidSentCommand(Command),
+    // L'errore contiene con ID antenna mal connessa e configurazione passata
+    FastSwitchingAntConfiguration(ErrorCode, u8, Vec<(u8, u8)>),
 }
 
 impl Display for FrameError {
@@ -36,6 +38,11 @@ impl Display for FrameError {
                 f,
                 "Abbiamo ricevuto come comando trasmesso un comando non previsto [{:#?}]",
                 command
+            ),
+            FrameError::FastSwitchingAntConfiguration(error, antenna_id, configuration) => write!(
+                f,
+                "Antenna not connected {} configuration in use {:#?} ({:?})",
+                antenna_id, configuration, error
             ),
         }
     }
