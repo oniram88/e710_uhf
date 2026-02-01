@@ -47,8 +47,10 @@ where
                         match response {
                             CommandResult::ResponsePackets(Ok(setted_values)) =>{
                                 self.buffer.extend(setted_values.0);
+                                self.finished = true;
                             }
                             CommandResult::ResponsePackets(Err(e))=>{
+                                self.finished = true;
                                 return Some(Err(ConnectorError::from(e)));
                             }
                             _=>{
@@ -57,6 +59,7 @@ where
                         }
                     }
                     Err(e) => {
+                        self.finished = true;
                         return Some(Err(e));
                     }
                 }
@@ -208,8 +211,10 @@ mod tests {
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
-        assert!(iterator.next().is_none());
-        assert!(!iterator.finished); // Non dovrebbe essere finito se fallisce solo la lettura
+        let res = iterator.next();
+        assert!(res.is_some());
+        assert!(res.unwrap().is_err());
+        assert!(iterator.finished); 
     }
 
     #[test]
@@ -220,7 +225,7 @@ mod tests {
             0x07, // ant ID
             0x00, 0x00, // ReadRate
             0x00, 0x00, 0x00, 0x00, // Total read (0)
-            0x6E, //Checksum
+            0xC3, //Checksum
         ];
 
         let stream = MockStream::new(raw_response);
@@ -241,7 +246,7 @@ mod tests {
     #[test]
     fn test_tag_iterator_rate_limiting() {
         let raw_response = vec![
-            0xA0, 0x0A, 0x01, 0x8B, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6E,
+            0xA0, 0x0A, 0x01, 0x8B, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC3,
         ];
 
         let stream = MockStream::new(raw_response);
