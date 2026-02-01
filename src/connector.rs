@@ -208,8 +208,6 @@ where
     //     Ok(())
     // }
 
-
-
     ///   Builds a configuration for fast switching between antennas based on VSWR (Voltage Standing Wave Ratio).
     ///
     ///   The method filters out antennas with a VSWR value equal to or higher than 2.0 and assigns a

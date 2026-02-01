@@ -1,11 +1,11 @@
-use e710_uhf::connector::{Connector};
+use chrono::{DateTime, Utc};
+use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::Command;
 use e710_uhf::frequency_references::Spectrum;
 use log::{Level, LevelFilter, debug, error, info};
 use std::io::Write;
 use std::net::TcpStream;
 use std::thread::sleep;
-use chrono::{DateTime, Utc};
 use std::time::{Duration, UNIX_EPOCH};
 
 fn ns_to_iso(ts_ns: u64) -> String {
@@ -32,7 +32,6 @@ fn logger_builder(level: LevelFilter) {
         .write_style(env_logger::fmt::WriteStyle::Always)
         .init();
 }
-
 
 #[allow(unreachable_code)]
 fn main() -> std::io::Result<()> {
@@ -100,7 +99,9 @@ fn main() -> std::io::Result<()> {
     loop {
         debug!("Waiting for tags...");
 
-        let mut iter_tag = connector.new_fast_switching_antenna_iterator(cfgs.clone()).unwrap();
+        let mut iter_tag = connector
+            .new_fast_switching_antenna_iterator(cfgs.clone())
+            .unwrap();
         while let Some(res) = iter_tag.next() {
             match res {
                 Ok(tag) => {

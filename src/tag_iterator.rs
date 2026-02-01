@@ -39,37 +39,34 @@ where
         }
 
         self.last_emit = Instant::now();
-        match self.connector.send_command(&self.sent_command){
-            Ok(()) => {
-                match self.connector.read_command(&self.sent_command) {
-                    Ok(response) => {
-                        debug!("Risposta ricevuta: {response}\n");
-                        match response {
-                            CommandResult::ResponsePackets(Ok(setted_values)) =>{
-                                self.buffer.extend(setted_values.0);
-                                self.finished = true;
-                            }
-                            CommandResult::ResponsePackets(Err(e))=>{
-                                self.finished = true;
-                                return Some(Err(ConnectorError::from(e)));
-                            }
-                            _=>{
-                                unreachable!();
-                            }
+        match self.connector.send_command(&self.sent_command) {
+            Ok(()) => match self.connector.read_command(&self.sent_command) {
+                Ok(response) => {
+                    debug!("Risposta ricevuta: {response}\n");
+                    match response {
+                        CommandResult::ResponsePackets(Ok(setted_values)) => {
+                            self.buffer.extend(setted_values.0);
+                            self.finished = true;
+                        }
+                        CommandResult::ResponsePackets(Err(e)) => {
+                            self.finished = true;
+                            return Some(Err(ConnectorError::from(e)));
+                        }
+                        _ => {
+                            unreachable!();
                         }
                     }
-                    Err(e) => {
-                        self.finished = true;
-                        return Some(Err(e));
-                    }
                 }
-            }
+                Err(e) => {
+                    self.finished = true;
+                    return Some(Err(e));
+                }
+            },
             Err(e) => {
                 error!("Errore inviando comando {e}");
                 self.finished = true;
             }
         }
-
 
         self.buffer.pop_front().map(Ok)
     }
@@ -96,8 +93,8 @@ mod tests {
     use crate::connector::Connector;
     use crate::frame::command::{Command, Session, Target};
     use crate::frequency_references::Spectrum;
-    use std::io::{Read, Write, Result};
     use std::collections::VecDeque;
+    use std::io::{Read, Result, Write};
     use std::time::Duration;
 
     struct MockStream {
@@ -137,7 +134,10 @@ mod tests {
     impl Write for MockStream {
         fn write(&mut self, buf: &[u8]) -> Result<usize> {
             if self.should_fail_write {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock write error"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock write error",
+                ));
             }
             self.written_data.extend_from_slice(buf);
             Ok(buf.len())
@@ -169,14 +169,9 @@ mod tests {
 
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
-        
-        let command = Command::CustomizeSessionTargetInventory(
-            Session::S0,
-            Target::A,
-            0,
-            0,
-        );
-        
+
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
         let res1 = iterator.next().unwrap();
@@ -194,7 +189,7 @@ mod tests {
     fn test_tag_iterator_send_error() {
         let stream = MockStream::new_failing_write();
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
-        
+
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
@@ -205,16 +200,16 @@ mod tests {
     #[test]
     fn test_tag_iterator_read_error() {
         // Risposta incompleta o errata
-        let stream = MockStream::new(vec![0xA0, 0x01, 0x02]); 
+        let stream = MockStream::new(vec![0xA0, 0x01, 0x02]);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
-        
+
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
         let res = iterator.next();
         assert!(res.is_some());
         assert!(res.unwrap().is_err());
-        assert!(iterator.finished); 
+        assert!(iterator.finished);
     }
 
     #[test]
@@ -230,14 +225,9 @@ mod tests {
 
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
-        
-        let command = Command::CustomizeSessionTargetInventory(
-            Session::S0,
-            Target::A,
-            0,
-            0,
-        );
-        
+
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
 
         assert!(iterator.next().is_none());
@@ -251,22 +241,16 @@ mod tests {
 
         let stream = MockStream::new(raw_response);
         let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
-        
-        let command = Command::CustomizeSessionTargetInventory(
-            Session::S0,
-            Target::A,
-            0,
-            0,
-        );
-        
+
+        let command = Command::CustomizeSessionTargetInventory(Session::S0, Target::A, 0, 0);
+
         let interval = Duration::from_millis(100);
         let mut iterator = tag_stream(&mut connector, command, interval);
 
         let start = std::time::Instant::now();
         let _ = iterator.next();
         let elapsed = start.elapsed();
-        
+
         assert!(elapsed >= interval);
     }
 }
-

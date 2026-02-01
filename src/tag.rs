@@ -17,8 +17,7 @@ pub struct Tag {
 
 impl Tag {
     pub(crate) fn from_raw_with_phase(raw: &[u8]) -> Tag {
-
-        let (antenna_id,frequency) = Self::extract_fre_ant_id(&raw[0]);
+        let (antenna_id, frequency) = Self::extract_fre_ant_id(&raw[0]);
 
         let (rssi, antenna_choosing) = Self::extract_rssi_choosing_antenna(&raw[raw.len() - 3]);
 
@@ -27,7 +26,7 @@ impl Tag {
             pc: bytes_to_hex_upper(&raw[1..3].to_vec()),
             epc: bytes_to_hex_upper(&raw[3..raw.len() - 3]),
             phase: (raw[raw.len() - 2], raw[raw.len() - 1]),
-             rssi,
+            rssi,
             antenna_id,
             antenna_choosing,
             received_at_ns: SystemTime::now()
@@ -37,11 +36,11 @@ impl Tag {
         }
     }
 
-    fn extract_fre_ant_id(freq_ant_byte: &u8) ->(u8,u8){
+    fn extract_fre_ant_id(freq_ant_byte: &u8) -> (u8, u8) {
         let antenna_id: u8 = freq_ant_byte & 0b0000_0011; // low 2 bits
         let frequency: u8 = freq_ant_byte >> 2; // high 6 bits
 
-        (antenna_id,frequency)
+        (antenna_id, frequency)
     }
 
     fn extract_rssi_choosing_antenna(rssi_byte: &u8) -> (u8, Option<u8>) {
@@ -58,8 +57,7 @@ impl Tag {
     }
 
     pub(crate) fn from_raw(raw: &[u8]) -> Tag {
-
-        let (antenna_id,frequency) = Self::extract_fre_ant_id(&raw[0]);
+        let (antenna_id, frequency) = Self::extract_fre_ant_id(&raw[0]);
         let (rssi, antenna_choosing) = Self::extract_rssi_choosing_antenna(&raw[raw.len() - 1]);
 
         Self {
@@ -124,7 +122,6 @@ mod tests {
         assert_eq!(tag.phase, (0x00, 0x32));
         assert_eq!(tag.rssi, 0x54);
         assert_eq!(tag.antenna_choosing, Some(0));
-
     }
 
     #[test]
@@ -152,7 +149,6 @@ mod tests {
         assert_eq!(rssi, 0x54);
         assert_eq!(antenna_choosing, Some(1));
 
-
         let (_rssi, _antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x54);
         assert_eq!(_rssi, 0x54);
         assert_eq!(_antenna_choosing, Some(0));
@@ -161,6 +157,4 @@ mod tests {
         assert_eq!(_rssi, 0x00);
         assert_eq!(_antenna_choosing, None);
     }
-
-
 }
