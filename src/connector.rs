@@ -6,7 +6,7 @@ use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
 use crate::tag_iterator;
 use crate::tag_iterator::TagIterator;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::fmt;
 use std::io::{self, Read, Write};
 
