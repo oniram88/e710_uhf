@@ -615,7 +615,7 @@ fn parse_tag_response(
 
         // Questo è il pacchetto con i totali finali
         match (length, sent_command) {
-            (0x0A, Command::FastSwitchAntInventory(..)) => {
+            (0x0A, &Command::FastSwitchAntInventory(..)) => {
                 let total_read = u32::from_be_bytes([0x00, data[0], data[1], data[2]]);
                 let duration = u32::from_be_bytes(data[3..7].try_into().unwrap());
                 let read_rate = if total_read > 0 {
@@ -629,7 +629,7 @@ fn parse_tag_response(
                     read_rate,
                 }
             }
-            (0x0A, Command::CustomizeSessionTargetInventory(..)) => {
+            (0x0A, &Command::CustomizeSessionTargetInventory(..)) => {
                 // Ultimo frame di check
                 result = ReadResult {
                     antenna_id: frame[4],
@@ -639,7 +639,7 @@ fn parse_tag_response(
             }
             // In caso di fast switching questo è un errore, e la configurazione delle antenne non è
             // correttamente impostata
-            (0x05, Command::FastSwitchAntInventory(a, ..)) => {
+            (0x05, &Command::FastSwitchAntInventory(ref a, ..)) => {
                 return Err(FrameError::FastSwitchingAntConfiguration(
                     ErrorCode::from_hex(data[1]),
                     data[0],
@@ -647,10 +647,10 @@ fn parse_tag_response(
                 ));
             }
             // Situazione con tag da parsare
-            (_, Command::FastSwitchAntInventory(_a,_b,_c,_d,0x00,_f)) => {
+            (_, &Command::FastSwitchAntInventory(_, _, _, _, 0x00, _)) => {
                 tags.push(Tag::from_raw(&data));
             }
-            (_, Command::FastSwitchAntInventory(_a,_b,_c,_d,0x01,_f)) => {
+            (_, &Command::FastSwitchAntInventory(_, _, _, _, 0x01, _)) => {
                 tags.push(Tag::from_raw_with_phase(&data));
             }
             _ => {
