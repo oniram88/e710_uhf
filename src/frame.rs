@@ -7,16 +7,6 @@ pub(crate) use crate::frame::frame_error::FrameError;
 const FRAME_HEADER: u8 = 0xA0;
 const RS485_ADDRESS: u8 = 0x01;
 
-fn from_bytes_to_utf8(bytes: &Vec<u8>) -> String {
-    //String::from_utf8_lossy(bytes).to_string()
-
-    if let Ok(text) = std::str::from_utf8(&*bytes) {
-        text.to_string()
-    } else {
-        "Invalid UTF-8".to_string()
-    }
-}
-
 pub struct Frame {
     payload: Vec<u8>,
 }
