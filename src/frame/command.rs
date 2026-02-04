@@ -518,6 +518,10 @@ impl SerializableCommand for Command {
 
         let (length, raw_command, checksum, data) = split_in_base_frame_parts(&raw);
 
+        if raw_command != sent_command.to_bytes()[0]{
+            return Err(FrameError::InvalidPacketOrder(sent_command.clone(),raw));
+        }
+        
         match raw_command {
             0x8B => {
                 // In questo caso abbiamo più pacchetti concatenati con più checksums
@@ -537,7 +541,7 @@ impl SerializableCommand for Command {
                 }
 
                 debug!(
-                    "CMD[0x{:02X}] DATA[{:?}] CHECKSUM[{}]",
+                    "SENDED COMMAND:[{sent_command}] - RECEIVED CMD[0x{:02X}] DATA[{:?}] CHECKSUM[{}]",
                     raw_command, data, checksum
                 );
 
@@ -920,6 +924,46 @@ mod tests {
             assert_eq!(pos, 1);
         } else {
             panic!("Expected GetWorkAntenna(Ok), got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_from_byte_invalid_command_order() {
+        // Invio GetFirmwareVersion (0x72), ma ricevo GetWorkAntenna (0x75)
+        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
+        let result = Command::from_byte(raw_packet.clone(), &Command::GetFirmwareVersion);
+
+        match result {
+            Err(FrameError::InvalidPacketOrder(sent, received)) => {
+                assert!(matches!(sent, Command::GetFirmwareVersion));
+                assert_eq!(received, raw_packet);
+            }
+            _ => panic!("Expected InvalidPacketOrder, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_from_byte_packet_too_short() {
+        let raw_packet = vec![0xA0, 0x04, 0x01];
+        let result = Command::from_byte(raw_packet.clone(), &Command::GetFirmwareVersion);
+
+        match result {
+            Err(FrameError::InvalidPacket(received)) => {
+                assert_eq!(received, raw_packet);
+            }
+            _ => panic!("Expected InvalidPacket, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_from_byte_invalid_checksum() {
+        // GetWorkAntenna (0x75), checksum errato (dovrebbe essere 0xE6, mettiamo 0x00)
+        let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0x00];
+        let result = Command::from_byte(raw_packet, &Command::GetWorkAntenna);
+
+        match result {
+            Err(FrameError::InvalidChecksum) => {}
+            _ => panic!("Expected InvalidChecksum, got {:?}", result),
         }
     }
 

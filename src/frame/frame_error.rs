@@ -14,6 +14,7 @@ pub enum FrameError {
     InvalidSentCommand(Command),
     // L'errore contiene con ID antenna mal connessa e configurazione passata
     FastSwitchingAntConfiguration(ErrorCode, u8, Vec<(u8, u8)>),
+    InvalidPacketOrder(Command, Vec<u8>),
 }
 
 impl Display for FrameError {
@@ -44,6 +45,9 @@ impl Display for FrameError {
                 "Antenna not connected {} configuration in use {:#?} ({:?})",
                 antenna_id, configuration, error
             ),
+            FrameError::InvalidPacketOrder(command, packet) => {
+                write!(f, "Invalid packet order, request: {:#?}, response -> ({:?})", command, packet)
+            }
         }
     }
 }

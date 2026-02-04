@@ -104,15 +104,31 @@ where
     pub fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
         let frame = Frame::new(&cmd);
         let bytes = frame.to_bytes();
+        debug!(
+            "[TX] [{}]",
+            bytes
+                .iter()
+                .map(|b| format!("0x{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
 
-        debug!("[TX] {:02X?} - [{cmd}]", bytes);
+
         self.send_frame(&bytes)?;
         Ok(())
     }
 
     pub fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError> {
         self.send_command(&cmd)?;
-        self.read_command(&cmd)
+       match self.read_command(&cmd){
+           Ok(result) => Ok(result),
+           Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(sent_command,raw_response)))=>{
+               // Facciamo un loop per il momento
+               debug!("[TX] Received invalid command {sent_command} - {:?} - Make Loop?? -",raw_response);
+               self.send_and_read_command(cmd)
+           },
+           Err(e) => Err(e),
+       }
     }
 
     ///
