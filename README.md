@@ -82,6 +82,7 @@ When connecting directly to the module via Ethernet, you may need to manually co
 ```shell
 # Configure interface speed and duplex
 sudo ethtool -s enp8s0 speed 10 duplex half autoneg off
+sudo ifconfig enp8s0 192.168.0.2 netmask 255.255.255.0
 
 # Restart the interface
 sudo ip link set enp8s0 down
@@ -89,6 +90,7 @@ sudo ip link set enp8s0 up
 
 # Verify state is UP
 ip link show enp8s0
+ip route show
 ```
 
 ### ARP Table Population
