@@ -61,7 +61,7 @@ fn main() -> std::io::Result<()> {
         Command::GetWorkAntenna,
         Command::GetReaderTemperature,
         Command::GetRfPortReturnLoss(866.0),
-        Command::SetBeeperMode(BeeperMode::Quiet)
+        Command::SetBeeperMode(BeeperMode::Quiet),
     ];
 
     // Ciclo sui comandi

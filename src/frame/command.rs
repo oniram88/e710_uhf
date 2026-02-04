@@ -474,7 +474,7 @@ impl SerializableCommand for Command {
                     0x8B,
                     session.clone() as u8,
                     target.clone() as u8,
-                    0x00, // SL a 0 Select Flag; range from: 00,01,02,03
+                    0x00,                // SL a 0 Select Flag; range from: 00,01,02,03
                     phase.clone() as u8, // Phase Value; 00 for turn it off; 01 for turn it on. [SE usiamo il parametro dobbiam parsare in modo diverso il risultato]
                     repeat.clone(),
                 ]

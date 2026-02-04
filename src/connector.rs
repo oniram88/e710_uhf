@@ -1,4 +1,6 @@
-use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target};
+use crate::frame::command::{
+    Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
+};
 use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
@@ -7,6 +9,7 @@ use crate::tag_iterator::TagIterator;
 use log::{debug, info, warn};
 use std::fmt;
 use std::io::{self, Read, Write};
+use std::time::Duration;
 
 pub struct Connector<P>
 where
@@ -81,8 +84,21 @@ where
 
     pub fn read_response(&mut self) -> io::Result<Vec<u8>> {
         let mut buffer = [0u8; 1024];
-        let n = self.port.read(&mut buffer)?;
-        Ok(buffer[..n].to_vec())
+
+        loop {
+            match self.port.read(&mut buffer) {
+                Ok(0) => return Ok(Vec::new()),
+
+                Ok(n) => return Ok(buffer[..n].to_vec()),
+
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(5));
+                    continue;
+                }
+
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     pub fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
@@ -329,10 +345,116 @@ where
         &mut self,
         antenna_cfg: Vec<(u8, u8)>,
     ) -> Result<TagIterator<'_, P>, ConnectorError> {
-        let cmd = Command::FastSwitchAntInventory(antenna_cfg, 0, Session::S1, Target::A, PhaseStatus::Off, 1);
+        let cmd = Command::FastSwitchAntInventory(
+            antenna_cfg,
+            0,
+            Session::S1,
+            Target::A,
+            PhaseStatus::Off,
+            1,
+        );
 
         let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
 
         Ok(iter_tag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{self, Read, Write};
+
+    struct MockPort {
+        read_data: Vec<Result<Vec<u8>, io::Error>>,
+        read_index: usize,
+    }
+
+    impl MockPort {
+        fn new(read_data: Vec<Result<Vec<u8>, io::Error>>) -> Self {
+            MockPort {
+                read_data,
+                read_index: 0,
+            }
+        }
+    }
+
+    impl Read for MockPort {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.read_index >= self.read_data.len() {
+                return Ok(0);
+            }
+
+            match &self.read_data[self.read_index] {
+                Ok(data) => {
+                    let len = data.len();
+                    buf[..len].copy_from_slice(data);
+                    self.read_index += 1;
+                    Ok(len)
+                }
+                Err(e) => {
+                    // Cloniamo l'errore per poterlo restituire
+                    let kind = e.kind();
+                    self.read_index += 1;
+                    Err(io::Error::new(kind, "mock error"))
+                }
+            }
+        }
+    }
+
+    impl Write for MockPort {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_read_response_success() {
+        let mock_port = MockPort::new(vec![Ok(vec![0x01, 0x02, 0x03])]);
+        let mut connector =
+            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875));
+
+        let response = connector.read_response().unwrap();
+        assert_eq!(response, vec![0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_read_response_empty() {
+        let mock_port = MockPort::new(vec![]);
+        let mut connector =
+            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875));
+
+        let response = connector.read_response().unwrap();
+        assert!(response.is_empty());
+    }
+
+    #[test]
+    fn test_read_response_would_block() {
+        let mock_port = MockPort::new(vec![
+            Err(io::Error::new(io::ErrorKind::WouldBlock, "would block")),
+            Ok(vec![0x04, 0x05]),
+        ]);
+        let mut connector =
+            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875));
+
+        let response = connector.read_response().unwrap();
+        assert_eq!(response, vec![0x04, 0x05]);
+    }
+
+    #[test]
+    fn test_read_response_error() {
+        let mock_port = MockPort::new(vec![Err(io::Error::new(
+            io::ErrorKind::Other,
+            "other error",
+        ))]);
+        let mut connector =
+            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875));
+
+        let result = connector.read_response();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Other);
     }
 }
