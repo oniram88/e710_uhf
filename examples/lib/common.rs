@@ -3,12 +3,12 @@ use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
 use log::{Level, LevelFilter, debug, error, info};
-use std::io::Write;
-use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::{Duration, UNIX_EPOCH};
 
-fn ns_to_iso(ts_ns: u64) -> String {
+use std::io::{Read, Write};
+
+pub fn ns_to_iso(ts_ns: u64) -> String {
     let secs = ts_ns / 1_000_000_000;
     let nanos = (ts_ns % 1_000_000_000) as u32;
 
@@ -16,7 +16,7 @@ fn ns_to_iso(ts_ns: u64) -> String {
     dt.to_rfc3339()
 }
 
-fn logger_builder(level: LevelFilter) {
+pub fn logger_builder(level: LevelFilter) {
     let mut builder = env_logger::Builder::new();
     builder
         .filter_level(level)
@@ -33,24 +33,12 @@ fn logger_builder(level: LevelFilter) {
         .init();
 }
 
+
+
 #[allow(unreachable_code)]
-fn main() -> std::io::Result<()> {
-    logger_builder(LevelFilter::Info);
-
-    // Indirizzo IP e porta del lettore UHF
-    let addr = "192.168.0.178:4001";
-
-    info!("Tentativo di connessione a {}...", addr);
-
-    // Apertura della connessione TCP con un timeout
-    let stream = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5))?;
-    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
-
-    info!("Connesso con successo!");
-
+pub fn test_connection(serial: impl Read + Write) ->std::io::Result<()> {
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(stream, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
+    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
 
     connector.setup_reader().unwrap();
 

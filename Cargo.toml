@@ -14,3 +14,12 @@ log = "0.4.29"
 paste = "1.0.15"
 env_logger = "0.11"
 chrono = "0.4"
+serialport = "4.8.1"
+
+
+
+[workspace.metadata.cross.target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get --assume-yes install libudev-dev:$CROSS_DEB_ARCH"
+]
