@@ -6,10 +6,10 @@ use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
 use crate::tag_iterator;
 use crate::tag_iterator::TagIterator;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::fmt;
 use std::io::{self, Read, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Connector<P>
 where
@@ -59,6 +59,8 @@ impl From<FrameError> for ConnectorError {
     }
 }
 
+const TIMEOUT_WAITING_PACKET: u64 = 150;
+
 impl<P> Connector<P>
 where
     P: Read + Write,
@@ -82,23 +84,39 @@ where
         self.port.flush()
     }
 
-    pub fn read_response(&mut self) -> io::Result<Vec<u8>> {
-        let mut buffer = [0u8; 1024];
+    fn read_response(&mut self) -> io::Result<Vec<u8>> {
+        let mut buffer = Vec::new();
+        let mut temp = [0u8; 1024];
+        let mut start = Instant::now();
 
         loop {
-            match self.port.read(&mut buffer) {
-                Ok(0) => return Ok(Vec::new()),
-
-                Ok(n) => return Ok(buffer[..n].to_vec()),
-
+            match self.port.read(&mut temp) {
+                Ok(n) if n > 0 => {
+                    buffer.extend_from_slice(&temp[..n]);
+                    // resetta il timer se arrivano dati
+                    start = Instant::now();
+                }
+                Ok(_) => {
+                    if start.elapsed() > Duration::from_millis(TIMEOUT_WAITING_PACKET) {
+                        debug!("Timeout waiting for response internal read");
+                        break;
+                    }
+                }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     std::thread::sleep(Duration::from_millis(5));
                     continue;
                 }
-
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                    // Questo timeout è definito tramite le impostazioni della seriale, la quale attende
+                    // X tempo prima di emettere un timeout se non riceve alcun pacchetto
+                    debug!("Error Timeout waiting for response");
+                    break;
+                }
                 Err(e) => return Err(e),
             }
         }
+
+        Ok(buffer)
     }
 
     pub fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
@@ -113,22 +131,27 @@ where
                 .join(",")
         );
 
-
         self.send_frame(&bytes)?;
         Ok(())
     }
 
     pub fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError> {
         self.send_command(&cmd)?;
-       match self.read_command(&cmd){
-           Ok(result) => Ok(result),
-           Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(sent_command,raw_response)))=>{
-               // Facciamo un loop per il momento
-               debug!("[TX] Received invalid command {sent_command} - {:?} - Make Loop?? -",raw_response);
-               self.send_and_read_command(cmd)
-           },
-           Err(e) => Err(e),
-       }
+        match self.read_command(&cmd) {
+            Ok(result) => Ok(result),
+            Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(
+                sent_command,
+                raw_response,
+            ))) => {
+                // Facciamo un loop per il momento
+                error!(
+                    "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
+                    raw_response
+                );
+                self.send_and_read_command(cmd)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     ///
@@ -138,7 +161,9 @@ where
         &mut self,
         sent_command: &Command,
     ) -> Result<CommandResult, ConnectorError> {
+        let start = Instant::now();
         let response = self.read_response()?;
+        debug!("Response time: {:?}", start.elapsed());
         debug!(
             "[RX] [{}]",
             response
