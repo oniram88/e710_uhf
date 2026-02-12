@@ -518,10 +518,10 @@ impl SerializableCommand for Command {
 
         let (length, raw_command, checksum, data) = split_in_base_frame_parts(&raw);
 
-        if raw_command != sent_command.to_bytes()[0]{
-            return Err(FrameError::InvalidPacketOrder(sent_command.clone(),raw));
+        if raw_command != sent_command.to_bytes()[0] {
+            return Err(FrameError::InvalidPacketOrder(sent_command.clone(), raw));
         }
-        
+
         match raw_command {
             0x8B => {
                 // In questo caso abbiamo più pacchetti concatenati con più checksums

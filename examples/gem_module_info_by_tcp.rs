@@ -1,14 +1,14 @@
+use crate::common::logger_builder;
+use log::{LevelFilter, info};
 use std::net::TcpStream;
 use std::time::Duration;
-use log::{info, LevelFilter};
-use crate::common::logger_builder;
 
 #[path = "../examples/lib/common.rs"]
 mod common;
 
 fn main() -> std::io::Result<()> {
     logger_builder(LevelFilter::Debug);
-    
+
     // Indirizzo IP e porta del lettore UHF
     let addr = "192.168.0.178:4001";
 

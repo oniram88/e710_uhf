@@ -46,7 +46,11 @@ impl Display for FrameError {
                 antenna_id, configuration, error
             ),
             FrameError::InvalidPacketOrder(command, packet) => {
-                write!(f, "Invalid packet order, request: {:#?}, response -> ({:?})", command, packet)
+                write!(
+                    f,
+                    "Invalid packet order, request: {:#?}, response -> ({:?})",
+                    command, packet
+                )
             }
         }
     }

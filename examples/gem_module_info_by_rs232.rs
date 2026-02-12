@@ -1,5 +1,5 @@
+use log::{LevelFilter, info};
 use std::time::Duration;
-use log::{info, LevelFilter};
 
 #[path = "../examples/lib/common.rs"]
 mod common;
@@ -13,7 +13,6 @@ fn main() -> std::io::Result<()> {
         // .parity(serialport::Parity::Even)
         .timeout(Duration::from_millis(300))
         .open()?;
-
 
     // Indirizzo IP e porta del lettore UHF
     // let addr = "192.168.0.178:4001";
