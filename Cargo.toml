@@ -9,6 +9,14 @@ license = "MIT"
 [dependencies]
 log = "0.4.29"
 
+# Dipendenze opzionali per async
+async-trait = { version = "0.1.89", optional = true }
+tokio = { version = "1", features = ["io-util"], optional = true }
+
+[features]
+default = []           # la feature async non è attiva di default
+async = ["tokio", "async-trait"]
+
 
 [dev-dependencies]
 paste = "1.0.15"
