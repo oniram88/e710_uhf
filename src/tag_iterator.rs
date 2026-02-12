@@ -1,3 +1,4 @@
+use crate::connector::sync::SyncIO;
 use crate::connector::{Connector, ConnectorError};
 use crate::frame::command::{Command, CommandResult};
 use crate::tag::Tag;
