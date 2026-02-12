@@ -14,6 +14,30 @@ All notable changes to this project will be documented in this file. See [conven
 - Retry send if command failed - (651a73e) - Marino Bonetti
 - Add `BeeperMode` enum and integrate `SetBeeperMode` command support - (54e5be6) - Marino Bonetti
 #### Miscellaneous Chores
+- **(version)** 0.2.0 - (830567c) - Marino Bonetti
+- Add description and license metadata to `Cargo.toml` - (a60867b) - Marino Bonetti
+- Exclude `docs/` directory from crate packaging in `Cargo.toml` - (52b82f5) - Marino Bonetti
+#### Refactoring
+- Replace `u8` with `PhaseStatus` in `CustomizeSessionTargetInventory` and related tests for improved readability and maintainability - (68bdc3b) - Marino Bonetti
+- Introduce `PhaseStatus` enum and integrate into `FastSwitchAntInventory` command for improved clarity and maintenance - (f2c01f1) - Marino Bonetti
+- Add `BeeperMode` import to `get_module_info.rs` for improved command integration - (ba553a2) - Marino Bonetti
+#### Tests
+- Add Beeper mode - (b0fe2a5) - Marino Bonetti
+
+- - -
+
+## 0.2.0 - 2026-02-12
+#### Bug Fixes
+- Corretto problema read blocking - (8820081) - Marino Bonetti
+- For faster reading no phase - (5365734) - Marino Bonetti
+#### Documentation
+- Update documentation - (0a42ddb) - Marino Bonetti
+#### Features
+- Add examples with serial - (bba7921) - Marino Bonetti
+- More debug and better read for Serial - (bd1916f) - Marino Bonetti
+- Retry send if command failed - (651a73e) - Marino Bonetti
+- Add `BeeperMode` enum and integrate `SetBeeperMode` command support - (54e5be6) - Marino Bonetti
+#### Miscellaneous Chores
 - Add description and license metadata to `Cargo.toml` - (a60867b) - Marino Bonetti
 - Exclude `docs/` directory from crate packaging in `Cargo.toml` - (52b82f5) - Marino Bonetti
 #### Refactoring
