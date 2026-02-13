@@ -7,6 +7,7 @@ use std::thread::sleep;
 use std::time::{Duration, UNIX_EPOCH};
 
 use std::io::{Read, Write};
+use e710_uhf::connector::sync::SyncIO;
 
 pub fn ns_to_iso(ts_ns: u64) -> String {
     let secs = ts_ns / 1_000_000_000;
