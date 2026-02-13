@@ -1,16 +1,35 @@
-#[cfg(feature = "async")]
-mod async_impl;
+#[macro_export]
+macro_rules! timed_debug {
+    ($msg:expr, $expr:expr) => {{
+        #[cfg(debug_assertions)]
+        {
+            use std::time::Instant;
+            let start = Instant::now();
+            let result = $expr;
+            log::debug!("{}: {:?}", $msg, start.elapsed());
+            result
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            $expr
+        }
+    }};
+}
+
 pub mod sync;
-
-#[cfg(feature = "async")]
-pub use async_impl::*;
-
-
-use crate::frame::{ FrameError};
+use crate::frame::command::{Command, CommandResult};
+use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
+use log::{debug, error};
 use std::fmt;
 use std::io::{self};
 
+#[cfg(feature = "async")]
+mod async_impl;
+
+#[cfg(feature = "async")]
+pub use async_impl::*;
 
 pub struct Connector<S> {
     socket: S,
@@ -23,19 +42,90 @@ pub struct Connector<S> {
 }
 
 impl<S> Connector<S> {
-    pub fn new(socket: S,
-               total_number_of_antennas: u8,
-               output_power: Vec<u8>,
-               working_freq_setup: (Spectrum, f64, f64)
+    pub fn new(
+        socket: S,
+        total_number_of_antennas: u8,
+        output_power: Vec<u8>,
+        working_freq_setup: (Spectrum, f64, f64),
     ) -> Self {
-        Connector { socket, total_number_of_antennas: total_number_of_antennas,
+        Connector {
+            socket,
+            total_number_of_antennas: total_number_of_antennas,
             working_freq_setup,
-            output_power, }
+            output_power,
+        }
     }
     pub fn into_inner(self) -> S {
         self.socket
     }
 
+    fn reference_frequency(&self) -> f64 {
+        ((self.working_freq_setup.1 + self.working_freq_setup.2) / 2.0).trunc()
+    }
+}
+
+enum ReadAction {
+    Repeat,
+    Ok(CommandResult),
+    ExecuteCommand(Command), // Caso in cui vogliamo che venga eseguito il comando
+}
+
+fn core_send_and_read_command(
+    result: Result<CommandResult, ConnectorError>,
+) -> Result<ReadAction, ConnectorError> {
+    match result {
+        Ok(result) => Ok(ReadAction::Ok(result)),
+        Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(sent_command, raw_response))) => {
+            // Facciamo un loop per il momento
+            error!(
+                "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
+                raw_response
+            );
+            Ok(ReadAction::Repeat)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn core_set_frequency_if_not(
+    result: CommandResult,
+    p0: Spectrum,
+    p1: f64,
+    p2: f64,
+) -> Result<ReadAction, ConnectorError> {
+    if let CommandResult::GetFrequencyRegion(Ok(region)) = &result {
+        if region.0 != p0 || region.1 != p1 || region.2 != p2 {
+            debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
+            Ok(ReadAction::ExecuteCommand(
+                Command::SetDefaultFrequencyRegion(p0, p1, p2),
+            ))
+        } else {
+            Ok(ReadAction::Ok(result))
+        }
+    } else {
+        Err(ConnectorError::FailedSetting(format!(
+            "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
+            p0, p1, p2
+        )))
+    }
+}
+
+fn command_to_frame_bytes(cmd: &Command) -> Vec<u8> {
+    let frame = Frame::new(cmd);
+    let bytes = frame.to_bytes();
+    debug_print_vec("TX", &bytes);
+    bytes
+}
+
+fn debug_print_vec(placeholder: &str, response: &[u8]) {
+    debug!(
+        "[{placeholder}] [{}]",
+        response
+            .iter()
+            .map(|b| format!("0x{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
 }
 
 #[derive(Debug)]
@@ -75,13 +165,11 @@ impl From<FrameError> for ConnectorError {
 
 const TIMEOUT_WAITING_PACKET: u64 = 150;
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{self, Read, Write};
     use crate::connector::sync::SyncIO;
+    use std::io::{self, Read, Write};
 
     struct MockPort {
         read_data: Vec<Result<Vec<u8>, io::Error>>,

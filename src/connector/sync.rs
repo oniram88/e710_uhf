@@ -1,11 +1,11 @@
-use crate::connector::{Connector, ConnectorError, TIMEOUT_WAITING_PACKET};
+use crate::connector::{Connector, ConnectorError, ReadAction, TIMEOUT_WAITING_PACKET, command_to_frame_bytes, core_send_and_read_command, debug_print_vec, core_set_frequency_if_not};
+use crate::frame::FrameError;
 use crate::frame::command::{
     Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
 };
-use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
-use crate::tag_iterator;
+use crate::{tag_iterator, timed_debug};
 use crate::tag_iterator::TagIterator;
 use log::{debug, error, info, warn};
 use std::io;
@@ -35,7 +35,6 @@ pub trait SyncIO {
         p2: f64,
     ) -> Result<(), ConnectorError>;
     fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError>;
-    fn reference_frequency(&self) -> f64;
     ///   Builds a configuration for fast switching between antennas based on VSWR (Voltage Standing Wave Ratio).
     ///
     ///   The method filters out antennas with a VSWR value equal to or higher than 2.0 and assigns a
@@ -100,6 +99,7 @@ where
         self.socket.flush()
     }
 
+    // TODO codice parzialmente duplicato in sync e async
     fn read_response(&mut self) -> io::Result<Vec<u8>> {
         let mut buffer = Vec::new();
         let mut temp = [0u8; 1024];
@@ -136,37 +136,17 @@ where
     }
 
     fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
-        let frame = Frame::new(&cmd);
-        let bytes = frame.to_bytes();
-        debug!(
-            "[TX] [{}]",
-            bytes
-                .iter()
-                .map(|b| format!("0x{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(",")
-        );
-
-        self.send_frame(&bytes)?;
+        self.send_frame(&*command_to_frame_bytes(cmd))?;
         Ok(())
     }
 
     fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError> {
         self.send_command(&cmd)?;
-        match self.read_command(&cmd) {
-            Ok(result) => Ok(result),
-            Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(
-                sent_command,
-                raw_response,
-            ))) => {
-                // Facciamo un loop per il momento
-                error!(
-                    "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
-                    raw_response
-                );
-                self.send_and_read_command(cmd)
-            }
+        match core_send_and_read_command(self.read_command(&cmd)) {
+            Ok(ReadAction::Ok(result)) => Ok(result),
+            Ok(ReadAction::Repeat) => self.send_and_read_command(cmd),
             Err(e) => Err(e),
+            Ok(_) => unreachable!()
         }
     }
 
@@ -174,23 +154,14 @@ where
     /// Legge il comando di risposta, ma passiamo il comando inviato a cui dobbiamo ricevere risposta
     /// in modo che possiamo poi capire come parsare il dato
     fn read_command(&mut self, sent_command: &Command) -> Result<CommandResult, ConnectorError> {
-        let start = Instant::now();
-        let response = self.read_response()?;
-        debug!("Response time: {:?}", start.elapsed());
-        debug!(
-            "[RX] [{}]",
-            response
-                .iter()
-                .map(|b| format!("0x{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(",")
-        );
+        let response =  timed_debug!("Response time:",self.read_response()?);
+        debug_print_vec("RX", &response);
         Ok(Command::from_byte(response, sent_command)?)
     }
 
     fn setup_reader(&mut self) -> Result<(), ConnectorError> {
         info!("\n\n== Controllo antenna detection:");
-        self.set_ant_connection_detector_if_not(0x03).unwrap(); // TODO configurable, ma terrei attivo in modo che il fast switching rilevi errori di connessione
+        self.set_ant_connection_detector_if_not(0x03)?; // TODO configurable, ma terrei attivo in modo che il fast switching rilevi errori di connessione
 
         info!("\n\n== Controllo frequenza:");
         self.set_frequency_if_not(
@@ -216,18 +187,17 @@ where
     ) -> Result<(), ConnectorError> {
         let response = self.send_and_read_command(Command::GetFrequencyRegion)?;
 
-        if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
-            if region.0 != p0 || region.1 != p1 || region.2 != p2 {
-                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
-                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
-            }
-            Ok(())
-        } else {
-            Err(ConnectorError::FailedSetting(format!(
-                "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
-                p0, p1, p2
-            )))
+        match core_set_frequency_if_not(response, p0, p1, p2) {
+            Ok(ReadAction::ExecuteCommand(command)) =>
+                match self.send_and_read_command(command){
+                    Ok(_)=>Ok(()),
+                    Err(e)=>Err(e)
+                }
+            Ok(ReadAction::Ok(_result))=>Ok(()),
+            Err(e) => Err(e),
+            Ok(_) => unreachable!()
         }
+
     }
 
     fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError> {
@@ -246,35 +216,6 @@ where
             )))
         }
     }
-
-    fn reference_frequency(&self) -> f64 {
-        ((self.working_freq_setup.1 + self.working_freq_setup.2) / 2.0).trunc()
-    }
-
-    // pub fn check_all_antennas_rf_port_return_loss(
-    //     &mut self,
-    //     reference_frequency: f64,
-    // ) -> Result<(), ConnectorError> {
-    //     for antenna_id in 0..self.total_number_of_antennas {
-    //         self.send_command(Command::SetWorkAntenna(antenna_id))?;
-    //         self.read_command()?;
-    //
-    //         self.send_command(Command::GetRfPortReturnLoss(reference_frequency))?;
-    //         let response = self.read_command()?;
-    //
-    //         if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
-    //             match vswr_res {
-    //                 Ok(vswr) => {
-    //                     println!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
-    //                 }
-    //                 Err(e) => {
-    //                     println!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
 
     ///   Builds a configuration for fast switching between antennas based on VSWR (Voltage Standing Wave Ratio).
     ///
