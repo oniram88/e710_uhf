@@ -242,4 +242,55 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Other);
     }
+
+    // --- Nuovi test per le funzioni pure di supporto ---
+
+    #[test]
+    fn test_core_build_fast_switching_antennas_filters_vswr_and_applies_stay() {
+        // Antenne: due buone (<2.0), due da filtrare (>=2.0)
+        let antennas = vec![(1, 1.5), (2, 2.0), (3, 0.99), (4, 2.5)];
+        let cfg = core_build_fast_switching_antennas(antennas, 7);
+
+        // Ci aspettiamo solo le antenne 1 e 3, con stay=7
+        assert_eq!(cfg, vec![(1, 7), (3, 7)]);
+    }
+
+    #[test]
+    fn test_core_build_fast_switching_antennas_empty_input() {
+        let antennas: Vec<(u8, f64)> = vec![];
+        let cfg = core_build_fast_switching_antennas(antennas, 3);
+        assert!(cfg.is_empty());
+    }
+
+    #[test]
+    fn test_core_build_fast_switching_antennas_all_filtered_out() {
+        let antennas = vec![(1, 2.0), (2, 2.01), (3, 5.0)];
+        let cfg = core_build_fast_switching_antennas(antennas, 9);
+        assert!(cfg.is_empty());
+    }
+
+    #[test]
+    fn test_core_map_get_rf_port_return_loss_ok_pushes_value() {
+        let mut antennas: Vec<(u8, f64)> = Vec::new();
+        let antenna_id = 5u8;
+        let rs = CommandResult::GetRfPortReturnLoss(Ok(1.23));
+
+        core_map_get_rf_port_return_loss(&mut antennas, antenna_id, rs);
+
+        assert_eq!(antennas, vec![(5, 1.23)]);
+    }
+
+    #[test]
+    fn test_core_map_get_rf_port_return_loss_err_does_not_push() {
+        let mut antennas: Vec<(u8, f64)> = Vec::new();
+        let antenna_id = 2u8;
+        // Simuliamo un errore a livello di frame
+        let frame_err = FrameError::InvalidChecksum;
+        let rs = CommandResult::GetRfPortReturnLoss(Err(frame_err));
+
+        core_map_get_rf_port_return_loss(&mut antennas, antenna_id, rs);
+
+        // Nessun elemento aggiunto
+        assert!(antennas.is_empty());
+    }
 }
