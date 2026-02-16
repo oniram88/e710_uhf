@@ -1,9 +1,8 @@
 use super::*;
 use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target};
 use crate::tag::Tag;
-use crate::tag_iterator::TagIterator;
 use async_trait::async_trait;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -149,11 +148,20 @@ where
         cmd: Command,
     ) -> Result<CommandResult, ConnectorError> {
         self.send_command(&cmd).await?;
-        match core_send_and_read_command(self.read_command(&cmd).await) {
-            Ok(ReadAction::Ok(result)) => Ok(result),
-            Ok(ReadAction::Repeat) => self.send_and_read_command(cmd).await,
+        match self.read_command(&cmd).await {
+            Ok(result) => Ok(result),
+            Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(
+                                          sent_command,
+                                          raw_response,
+                                      ))) => {
+                // Facciamo un loop per il momento
+                error!(
+                    "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
+                    raw_response
+                );
+                self.send_and_read_command(cmd).await
+            }
             Err(e) => Err(e),
-            Ok(_) => unreachable!(),
         }
     }
 
@@ -195,20 +203,19 @@ where
         p1: f64,
         p2: f64,
     ) -> Result<(), ConnectorError> {
-        let response = self
-            .send_and_read_command(Command::GetFrequencyRegion)
-            .await?;
+        let response = self.send_and_read_command(Command::GetFrequencyRegion).await?;
 
-        match core_set_frequency_if_not(response, p0, p1, p2) {
-            Ok(ReadAction::ExecuteCommand(command)) => {
-                match self.send_and_read_command(command).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e),
-                }
+        if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
+            if region.0 != p0 || region.1 != p1 || region.2 != p2 {
+                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
+                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2)).await?;
             }
-            Ok(ReadAction::Ok(_result)) => Ok(()),
-            Err(e) => Err(e),
-            Ok(_) => unreachable!(),
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
+                p0, p1, p2
+            )))
         }
     }
 

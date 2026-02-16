@@ -1,13 +1,16 @@
-use crate::connector::{Connector, ConnectorError, ReadAction, TIMEOUT_WAITING_PACKET, command_to_frame_bytes, core_send_and_read_command, debug_print_vec, core_set_frequency_if_not, core_build_fast_switching_antennas, core_map_get_rf_port_return_loss};
+use crate::connector::{
+    Connector, ConnectorError,  TIMEOUT_WAITING_PACKET, command_to_frame_bytes,
+    core_build_fast_switching_antennas, core_map_get_rf_port_return_loss, debug_print_vec,
+};
 use crate::frame::FrameError;
 use crate::frame::command::{
     Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
 };
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
-use crate::{tag_iterator, timed_debug};
 use crate::tag_iterator::TagIterator;
-use log::{debug, error, info, warn};
+use crate::{tag_iterator};
+use log::{debug, error, info};
 use std::io;
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
@@ -142,11 +145,20 @@ where
 
     fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError> {
         self.send_command(&cmd)?;
-        match core_send_and_read_command(self.read_command(&cmd)) {
-            Ok(ReadAction::Ok(result)) => Ok(result),
-            Ok(ReadAction::Repeat) => self.send_and_read_command(cmd),
+        match self.read_command(&cmd) {
+            Ok(result) => Ok(result),
+            Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(
+                sent_command,
+                raw_response,
+            ))) => {
+                // Facciamo un loop per il momento
+                error!(
+                    "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
+                    raw_response
+                );
+                self.send_and_read_command(cmd)
+            }
             Err(e) => Err(e),
-            Ok(_) => unreachable!()
         }
     }
 
@@ -154,7 +166,7 @@ where
     /// Legge il comando di risposta, ma passiamo il comando inviato a cui dobbiamo ricevere risposta
     /// in modo che possiamo poi capire come parsare il dato
     fn read_command(&mut self, sent_command: &Command) -> Result<CommandResult, ConnectorError> {
-        let response =  timed_debug!("Response time:",self.read_response()?);
+        let response = timed_debug!("Response time:", self.read_response()?);
         debug_print_vec("RX", &response);
         Ok(Command::from_byte(response, sent_command)?)
     }
@@ -187,17 +199,18 @@ where
     ) -> Result<(), ConnectorError> {
         let response = self.send_and_read_command(Command::GetFrequencyRegion)?;
 
-        match core_set_frequency_if_not(response, p0, p1, p2) {
-            Ok(ReadAction::ExecuteCommand(command)) =>
-                match self.send_and_read_command(command){
-                    Ok(_)=>Ok(()),
-                    Err(e)=>Err(e)
-                }
-            Ok(ReadAction::Ok(_result))=>Ok(()),
-            Err(e) => Err(e),
-            Ok(_) => unreachable!()
+        if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
+            if region.0 != p0 || region.1 != p1 || region.2 != p2 {
+                debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
+                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
+                p0, p1, p2
+            )))
         }
-
     }
 
     fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError> {
@@ -222,7 +235,7 @@ where
         default_stay: u8,
     ) -> Result<Vec<(u8, u8)>, ConnectorError> {
         let antennas = self.get_statistic_to_all_antennas()?;
-        Ok(core_build_fast_switching_antennas(antennas,default_stay))
+        Ok(core_build_fast_switching_antennas(antennas, default_stay))
     }
 
     ///
@@ -237,7 +250,7 @@ where
             let response = self
                 .send_and_read_command(Command::GetRfPortReturnLoss(self.reference_frequency()))?;
 
-            core_map_get_rf_port_return_loss(&mut antennas,antenna_id,response);
+            core_map_get_rf_port_return_loss(&mut antennas, antenna_id, response);
         }
 
         Ok(antennas)

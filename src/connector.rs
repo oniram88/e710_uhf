@@ -64,52 +64,6 @@ impl<S> Connector<S> {
     }
 }
 
-enum ReadAction {
-    Repeat,
-    Ok(CommandResult),
-    ExecuteCommand(Command), // Caso in cui vogliamo che venga eseguito il comando
-}
-
-fn core_send_and_read_command(
-    result: Result<CommandResult, ConnectorError>,
-) -> Result<ReadAction, ConnectorError> {
-    match result {
-        Ok(result) => Ok(ReadAction::Ok(result)),
-        Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(sent_command, raw_response))) => {
-            // Facciamo un loop per il momento
-            error!(
-                "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
-                raw_response
-            );
-            Ok(ReadAction::Repeat)
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn core_set_frequency_if_not(
-    result: CommandResult,
-    p0: Spectrum,
-    p1: f64,
-    p2: f64,
-) -> Result<ReadAction, ConnectorError> {
-    if let CommandResult::GetFrequencyRegion(Ok(region)) = &result {
-        if region.0 != p0 || region.1 != p1 || region.2 != p2 {
-            debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
-            Ok(ReadAction::ExecuteCommand(
-                Command::SetDefaultFrequencyRegion(p0, p1, p2),
-            ))
-        } else {
-            Ok(ReadAction::Ok(result))
-        }
-    } else {
-        Err(ConnectorError::FailedSetting(format!(
-            "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
-            p0, p1, p2
-        )))
-    }
-}
-
 fn core_build_fast_switching_antennas(antennas:Vec<(u8, f64)>, default_stay: u8,)->Vec<(u8, u8)>{
     let mut out = vec![];
     for (id_antenna, vswr) in antennas.iter() {
