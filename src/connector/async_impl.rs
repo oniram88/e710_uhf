@@ -3,8 +3,8 @@ use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, 
 use crate::tag::Tag;
 use async_trait::async_trait;
 use log::{debug, error, info};
-use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time::{timeout, Duration};
 
 #[async_trait]
 pub trait AsyncIO {
@@ -106,32 +106,24 @@ where
     async fn read_response(&mut self) -> io::Result<Vec<u8>> {
         let mut buffer = Vec::new();
         let mut temp = [0u8; 1024];
-        let mut start = Instant::now();
+
+        let timeout_duration = Duration::from_millis(TIMEOUT_WAITING_PACKET);
 
         loop {
-            match self.socket.read(&mut temp).await {
-                Ok(n) if n > 0 => {
+            match timeout(timeout_duration, self.socket.read(&mut temp)).await {
+                Ok(Ok(n)) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
-                    // resetta il timer se arrivano dati
-                    start = Instant::now();
                 }
-                Ok(_) => {
-                    if start.elapsed() > Duration::from_millis(TIMEOUT_WAITING_PACKET) {
-                        debug!("Timeout waiting for response internal read");
-                        break;
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(5));
-                    continue;
-                }
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    // Questo timeout è definito tramite le impostazioni della seriale, la quale attende
-                    // X tempo prima di emettere un timeout se non riceve alcun pacchetto
-                    debug!("Error Timeout waiting for response");
+                Ok(Ok(_)) => {
+                    // n == 0 → porta chiusa
                     break;
                 }
-                Err(e) => return Err(e),
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    // timeout scaduto
+                    debug!("Timeout waiting for response");
+                    break;
+                }
             }
         }
 

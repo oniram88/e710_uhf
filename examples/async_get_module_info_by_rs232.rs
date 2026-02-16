@@ -1,24 +1,30 @@
 use log::{LevelFilter,   info};
-use std::thread::sleep;
 use std::time::Duration;
+use tokio::time::sleep;
+use tokio_serial::{ SerialPortBuilderExt};
 
 #[path = "../examples/lib/common.rs"]
 mod common;
 use common::logger_builder;
 
-use e710_uhf::connector::sync::SyncIO;
+use e710_uhf::connector::AsyncIO;
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
-use serialport;
 
-fn main() -> std::io::Result<()> {
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
     logger_builder(LevelFilter::Debug);
 
-    let serial = serialport::new("/dev/ttyUSB0", 115200)
+
+    let serial = tokio_serial::new("/dev/ttyUSB0", 115200)
         .timeout(Duration::from_millis(300))
-        .open()
-        .expect("Failed to open serial port");
+        .open_native_async()?;
+
+
+    // let serial = serialport::open(&tokio_serial::new("/dev/ttyUSB0", 115200))
+    //     .expect("Failed to open async serial port");
 
     // let mut connector = UnifiedConnector::new(port);
 
@@ -27,7 +33,7 @@ fn main() -> std::io::Result<()> {
     // Creazione del connector utilizzando lo stream TCP
     let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
 
-    connector.setup_reader().unwrap();
+    connector.setup_reader().await.unwrap();
 
     // Vettore di comandi da eseguire
     let commands = vec![
@@ -41,16 +47,16 @@ fn main() -> std::io::Result<()> {
 
     // Ciclo sui comandi
     for cmd in commands {
-        let response = connector.send_and_read_command(cmd).unwrap();
+        let response = connector.send_and_read_command(cmd).await.unwrap();
 
         // Lettura della risposta
         info!("Risposta ricevuta: {response}\n");
 
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(500)).await;
     }
 
     info!("Get Antenna statistics");
-    let statistics = connector.get_statistic_to_all_antennas().unwrap();
+    let statistics = connector.get_statistic_to_all_antennas().await.unwrap();
 
     info!("| ID antenna | vswr |");
     for (id_antenna, vswr) in statistics.iter() {
@@ -68,7 +74,7 @@ fn main() -> std::io::Result<()> {
     // }
 
     info!("Build automatic antennas_cfgs");
-    let cfgs = connector.build_fast_switching_antenna_cfg(1).unwrap();
+    let cfgs = connector.build_fast_switching_antenna_cfg(1).await.unwrap();
     info!("Configuration: {:#?}", cfgs);
 
     info!("\n\n== Avvio lettore fast switching:");
