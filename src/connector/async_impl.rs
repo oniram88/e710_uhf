@@ -2,7 +2,7 @@ use super::*;
 use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target};
 use crate::tag::Tag;
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, error, info};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 

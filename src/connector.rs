@@ -21,7 +21,7 @@ pub mod sync;
 use crate::frame::command::{Command, CommandResult};
 use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::fmt;
 use std::io::{self};
 
