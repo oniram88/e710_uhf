@@ -306,3 +306,129 @@ where
         }
     }
 }
+
+#[cfg(all(test, feature = "async"))]
+mod tests {
+    use super::*;
+    use std::io;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWrite};
+
+    /// Mock asincrono per simulare una socket che implementa AsyncRead/AsyncWrite
+    struct AsyncMockSocket {
+        // Sequenza di risultati di lettura: ogni elemento rappresenta un "chunk" letto
+        read_data: Vec<Result<Vec<u8>, io::Error>>,
+        read_index: usize,
+        written: Vec<u8>,
+    }
+
+    impl AsyncMockSocket {
+        fn new(read_data: Vec<Result<Vec<u8>, io::Error>>) -> Self {
+            Self { read_data, read_index: 0, written: Vec::new() }
+        }
+
+        fn written(&self) -> &[u8] { &self.written }
+    }
+
+    impl AsyncRead for AsyncMockSocket {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            let me = self.get_mut();
+
+            if me.read_index >= me.read_data.len() {
+                // EOF immediato
+                return Poll::Ready(Ok(()));
+            }
+
+            match &me.read_data[me.read_index] {
+                Ok(data) => {
+                    let to_copy = data.len().min(buf.remaining());
+                    buf.put_slice(&data[..to_copy]);
+                    me.read_index += 1;
+                    Poll::Ready(Ok(()))
+                }
+                Err(e) => {
+                    let kind = e.kind();
+                    me.read_index += 1;
+                    Poll::Ready(Err(io::Error::new(kind, "mock async read error")))
+                }
+            }
+        }
+    }
+
+    impl AsyncWrite for AsyncMockSocket {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            let me = self.get_mut();
+            me.written.extend_from_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn new_connector_with(socket: AsyncMockSocket) -> Connector<AsyncMockSocket> {
+        Connector::new(socket, 1, vec![30], (crate::frequency_references::Spectrum::CHN, 920.125, 924.875))
+    }
+
+    #[tokio::test]
+    async fn test_async_send_frame_writes_bytes() {
+        let socket = AsyncMockSocket::new(vec![]);
+        let mut connector = new_connector_with(socket);
+
+        let data = vec![0xAA, 0xBB, 0xCC, 0xDD];
+        connector.send_frame(&data).await.expect("send_frame fallita");
+
+        let written = connector.into_inner().written().to_vec();
+        assert_eq!(written, data);
+    }
+
+    #[tokio::test]
+    async fn test_async_read_response_success_single_chunk() {
+        let socket = AsyncMockSocket::new(vec![Ok(vec![0x01, 0x02, 0x03])]);
+        let mut connector = new_connector_with(socket);
+
+        let response = connector.read_response().await.expect("read_response ok");
+        assert_eq!(response, vec![0x01, 0x02, 0x03]);
+    }
+
+    #[tokio::test]
+    async fn test_async_read_response_success_multi_chunk() {
+        let socket = AsyncMockSocket::new(vec![Ok(vec![0x04, 0x05]), Ok(vec![0x06])]);
+        let mut connector = new_connector_with(socket);
+
+        let response = connector.read_response().await.expect("read_response ok");
+        assert_eq!(response, vec![0x04, 0x05, 0x06]);
+    }
+
+    #[tokio::test]
+    async fn test_async_read_response_empty() {
+        let socket = AsyncMockSocket::new(vec![]); // EOF immediato
+        let mut connector = new_connector_with(socket);
+
+        let response = connector.read_response().await.expect("read_response ok");
+        assert!(response.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_async_read_response_error() {
+        let socket = AsyncMockSocket::new(vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))]);
+        let mut connector = new_connector_with(socket);
+
+        let err = connector.read_response().await.err().expect("atteso errore");
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+}
