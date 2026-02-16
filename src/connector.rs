@@ -21,7 +21,7 @@ pub mod sync;
 use crate::frame::command::{Command, CommandResult};
 use crate::frame::{Frame, FrameError};
 use crate::frequency_references::Spectrum;
-use log::{debug, error};
+use log::{debug, error, info, warn};
 use std::fmt;
 use std::io::{self};
 
@@ -107,6 +107,31 @@ fn core_set_frequency_if_not(
             "Failed to check Frequency Region for new settings {:?} {:?} {:?}",
             p0, p1, p2
         )))
+    }
+}
+
+fn core_build_fast_switching_antennas(antennas:Vec<(u8, f64)>, default_stay: u8,)->Vec<(u8, u8)>{
+    let mut out = vec![];
+    for (id_antenna, vswr) in antennas.iter() {
+        // threshold per eliminare le antenne con vswr troppo alto
+        if *vswr < 2.0 {
+            out.push((*id_antenna, default_stay));
+        }
+    }
+    out
+}
+
+fn core_map_get_rf_port_return_loss(antennas: &mut Vec<(u8, f64)>,antenna_id: u8,rs: CommandResult){
+    if let CommandResult::GetRfPortReturnLoss(vswr_res) = rs {
+        match vswr_res {
+            Ok(vswr) => {
+                antennas.push((antenna_id, vswr));
+                info!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
+            }
+            Err(e) => {
+                warn!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
+            }
+        }
     }
 }
 

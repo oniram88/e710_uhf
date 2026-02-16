@@ -1,4 +1,4 @@
-use crate::connector::{Connector, ConnectorError, ReadAction, TIMEOUT_WAITING_PACKET, command_to_frame_bytes, core_send_and_read_command, debug_print_vec, core_set_frequency_if_not};
+use crate::connector::{Connector, ConnectorError, ReadAction, TIMEOUT_WAITING_PACKET, command_to_frame_bytes, core_send_and_read_command, debug_print_vec, core_set_frequency_if_not, core_build_fast_switching_antennas, core_map_get_rf_port_return_loss};
 use crate::frame::FrameError;
 use crate::frame::command::{
     Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
@@ -217,40 +217,12 @@ where
         }
     }
 
-    ///   Builds a configuration for fast switching between antennas based on VSWR (Voltage Standing Wave Ratio).
-    ///
-    ///   The method filters out antennas with a VSWR value equal to or higher than 2.0 and assigns a
-    ///   default "stay time" for the remaining antennas. The configuration is returned as a vector of
-    ///   tuples containing the antenna ID and the default stay time.
-    ///
-    ///   # Parameters
-    ///
-    ///   * `default_stay` - A `u8` value that represents the default duration to stay on each antenna in the returned configuration.
-    ///
-    ///   # Returns
-    ///
-    ///   Returns a `Result`:
-    ///
-    ///   * `Ok(Vec<(u8, u8)>)` - A vector of tuples. Each tuple contains:
-    ///       - `u8`: The antenna ID.
-    ///       - `u8`: The default stay time.
-    ///   * `Err(ConnectorError)` - An error occurs if retrieving statistics for the antennas fails.
-    ///
     fn build_fast_switching_antenna_cfg(
         &mut self,
         default_stay: u8,
     ) -> Result<Vec<(u8, u8)>, ConnectorError> {
-        let mut out = vec![];
         let antennas = self.get_statistic_to_all_antennas()?;
-
-        for (id_antenna, vswr) in antennas.iter() {
-            // threshold per eliminare le antenne con vswr troppo alto
-            if *vswr < 2.0 {
-                out.push((*id_antenna, default_stay));
-            }
-        }
-
-        Ok(out)
+        Ok(core_build_fast_switching_antennas(antennas,default_stay))
     }
 
     ///
@@ -265,17 +237,7 @@ where
             let response = self
                 .send_and_read_command(Command::GetRfPortReturnLoss(self.reference_frequency()))?;
 
-            if let CommandResult::GetRfPortReturnLoss(vswr_res) = response {
-                match vswr_res {
-                    Ok(vswr) => {
-                        antennas.push((antenna_id, vswr));
-                        info!("Antenna {}: VSWR = {:.2}", antenna_id, vswr);
-                    }
-                    Err(e) => {
-                        warn!("Antenna {}: Error getting Return Loss: {}", antenna_id, e);
-                    }
-                }
-            }
+            core_map_get_rf_port_return_loss(&mut antennas,antenna_id,response);
         }
 
         Ok(antennas)

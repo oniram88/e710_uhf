@@ -1,9 +1,9 @@
 use super::*;
-use crate::frame::command::{Command, CommandResult, RfLinkProfile, SerializableCommand};
+use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target};
 use crate::tag::Tag;
 use crate::tag_iterator::TagIterator;
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -213,32 +213,97 @@ where
     }
 
     async fn set_output_power_if_not(&mut self, p0: Vec<u8>) -> Result<(), ConnectorError> {
-        todo!()
+        let response = self.send_and_read_command(Command::GetOutputPower).await?;
+
+        if let CommandResult::GetOutputPower(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE OUTPUT POWER: {:?}", p0);
+                self.send_and_read_command(Command::SetOutputPower(p0.clone()))
+                    .await?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to check Output Power for new settings {:?}",
+                p0
+            )))
+        }
     }
 
     async fn build_fast_switching_antenna_cfg(
         &mut self,
         default_stay: u8,
     ) -> Result<Vec<(u8, u8)>, ConnectorError> {
-        todo!()
+        let antennas = self.get_statistic_to_all_antennas().await?;
+        Ok(core_build_fast_switching_antennas(antennas, default_stay))
     }
 
     async fn get_statistic_to_all_antennas(&mut self) -> Result<Vec<(u8, f64)>, ConnectorError> {
-        todo!()
+        let mut antennas: Vec<(u8, f64)> = vec![];
+
+        for antenna_id in 0..self.total_number_of_antennas {
+            self.send_and_read_command(Command::SetWorkAntenna(antenna_id))
+                .await?;
+
+            let response = self
+                .send_and_read_command(Command::GetRfPortReturnLoss(self.reference_frequency()))
+                .await?;
+            core_map_get_rf_port_return_loss(&mut antennas, antenna_id, response);
+        }
+
+        Ok(antennas)
     }
 
     async fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
-        todo!()
+        let response = self.send_and_read_command(Command::GetAntConnectionDetector).await?;
+
+        if let CommandResult::GetAntConnectionDetector(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE ConnectionDetector value: {:?}", p0);
+                self.send_and_read_command(Command::SetAntConnectionDetector(p0.clone())).await?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to set Ant connection Error to desired settings {:?}",
+                p0
+            )))
+        }
     }
 
     async fn set_rf_link_profile_if_not(
         &mut self,
         p0: RfLinkProfile,
     ) -> Result<(), ConnectorError> {
-        todo!()
+        let response = self.send_and_read_command(Command::GetRfLinkProfile).await?;
+        if let CommandResult::GetRfLinkProfile(Ok(setted_values)) = response {
+            if setted_values != p0 {
+                debug!("NEED CHANGE RfLinkProfile to value: {:?}", p0);
+                self.send_and_read_command(Command::SetRfLinkProfile(p0.clone())).await?;
+            }
+            Ok(())
+        } else {
+            Err(ConnectorError::FailedSetting(format!(
+                "Failed to set RfLinkProfile to desired settings {:?}",
+                p0
+            )))
+        }
     }
 
     async fn make_a_read_single_antenna(&mut self) -> Result<Vec<Tag>, ConnectorError> {
-        todo!()
+        let response = self.send_and_read_command(Command::CustomizeSessionTargetInventory(
+            Session::S1,
+            Target::A,
+            PhaseStatus::Off,
+            1,
+        )).await?;
+        debug!("Risposta ricevuta: {response}\n");
+
+        if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
+            debug!("{:?}", setted_values);
+            Ok(setted_values.0)
+        } else {
+            Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
+        }
     }
 }
