@@ -64,7 +64,7 @@ impl<S> Connector<S> {
     }
 }
 
-fn core_build_fast_switching_antennas(antennas:Vec<(u8, f64)>, default_stay: u8,)->Vec<(u8, u8)>{
+fn core_build_fast_switching_antennas(antennas: Vec<(u8, f64)>, default_stay: u8) -> Vec<(u8, u8)> {
     let mut out = vec![];
     for (id_antenna, vswr) in antennas.iter() {
         // threshold per eliminare le antenne con vswr troppo alto
@@ -75,7 +75,11 @@ fn core_build_fast_switching_antennas(antennas:Vec<(u8, f64)>, default_stay: u8,
     out
 }
 
-fn core_map_get_rf_port_return_loss(antennas: &mut Vec<(u8, f64)>,antenna_id: u8,rs: CommandResult){
+fn core_map_get_rf_port_return_loss(
+    antennas: &mut Vec<(u8, f64)>,
+    antenna_id: u8,
+    rs: CommandResult,
+) {
     if let CommandResult::GetRfPortReturnLoss(vswr_res) = rs {
         match vswr_res {
             Ok(vswr) => {

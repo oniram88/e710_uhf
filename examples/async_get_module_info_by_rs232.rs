@@ -1,29 +1,27 @@
-use log::{LevelFilter, info, debug, error};
-use std::time::Duration;
 use futures_util::stream::StreamExt; // for `.next().await` on streams
+use log::{LevelFilter, debug, error, info};
+use std::time::Duration;
 use tokio::time::sleep;
-use tokio_serial::{ SerialPortBuilderExt};
+use tokio_serial::SerialPortBuilderExt;
 
 #[path = "../examples/lib/common.rs"]
 mod common;
 use common::logger_builder;
 
+use crate::common::ns_to_iso;
 use e710_uhf::connector::AsyncIO;
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
-use crate::common::ns_to_iso;
 
 #[allow(unreachable_code)]
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     logger_builder(LevelFilter::Debug);
 
-
     let serial = tokio_serial::new("/dev/ttyUSB0", 115200)
         .timeout(Duration::from_millis(300))
         .open_native_async()?;
-
 
     // let serial = serialport::open(&tokio_serial::new("/dev/ttyUSB0", 115200))
     //     .expect("Failed to open async serial port");
@@ -84,9 +82,7 @@ async fn main() -> std::io::Result<()> {
         debug!("Waiting for tags...");
 
         // Streams produced by async_stream are not Unpin by default; pin the stream
-        let mut iter_tag = Box::pin(
-            connector.new_fast_switching_antenna_iterator(cfgs.clone())
-        );
+        let mut iter_tag = Box::pin(connector.new_fast_switching_antenna_iterator(cfgs.clone()));
         while let Some(res) = iter_tag.as_mut().next().await {
             match res {
                 Ok(tag) => {

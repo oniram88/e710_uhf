@@ -1,5 +1,5 @@
 use crate::connector::{
-    Connector, ConnectorError,  TIMEOUT_WAITING_PACKET, command_to_frame_bytes,
+    Connector, ConnectorError, TIMEOUT_WAITING_PACKET, command_to_frame_bytes,
     core_build_fast_switching_antennas, core_map_get_rf_port_return_loss, debug_print_vec,
 };
 use crate::frame::FrameError;
@@ -8,8 +8,8 @@ use crate::frame::command::{
 };
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
+use crate::tag_iterator;
 use crate::tag_iterator::TagIterator;
-use crate::{tag_iterator};
 use log::{debug, error, info};
 use std::io;
 use std::io::{Read, Write};

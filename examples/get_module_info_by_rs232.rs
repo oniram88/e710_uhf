@@ -14,7 +14,6 @@ fn main() -> std::io::Result<()> {
         .timeout(Duration::from_millis(300))
         .open()?;
 
-
     info!("Connesso con successo!");
 
     common::test_connection(serial)
