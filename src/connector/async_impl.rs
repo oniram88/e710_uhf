@@ -334,7 +334,7 @@ where
             1,
         );
 
-        let iter_tag = tag_stream_async(self, cmd, std::time::Duration::from_secs(0));
+        let iter_tag = tag_stream_async(self, cmd);
 
         // let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
 

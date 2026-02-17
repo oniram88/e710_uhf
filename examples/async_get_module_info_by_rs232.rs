@@ -14,6 +14,7 @@ use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
 use crate::common::ns_to_iso;
 
+#[allow(unreachable_code)]
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     logger_builder(LevelFilter::Debug);
@@ -94,7 +95,7 @@ async fn main() -> std::io::Result<()> {
                 Err(e) => error!("Error reading tags: {:?}", e),
             }
         }
-        sleep(Duration::from_millis(30));
+        sleep(Duration::from_millis(30)).await;
     }
 
     // sleep(Duration::from_secs(4));
