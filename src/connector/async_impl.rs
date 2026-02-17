@@ -1,10 +1,14 @@
 use super::*;
-use crate::frame::command::{Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target};
+use crate::frame::command::{
+    Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
+};
 use crate::tag::Tag;
+use crate::{ tag_stream_async};
 use async_trait::async_trait;
+use futures_core::Stream;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[async_trait]
 pub trait AsyncIO {
@@ -72,10 +76,10 @@ pub trait AsyncIO {
     //
     // Read with 1 repeat on the working antenna
     // antenna_cfg: a vector of tuple antenna_id e stay
-    // async fn new_fast_switching_antenna_iterator(
-    //      &mut self,
-    //      antenna_cfg: Vec<(u8, u8)>,
-    //  ) -> Result<TagIterator<'_, Self::Socket>, ConnectorError>;
+    fn new_fast_switching_antenna_iterator(
+        &mut self,
+        antenna_cfg: Vec<(u8, u8)>,
+    ) -> impl Stream<Item = Result<Tag, ConnectorError>>;
 }
 
 #[async_trait]
@@ -143,9 +147,9 @@ where
         match self.read_command(&cmd).await {
             Ok(result) => Ok(result),
             Err(ConnectorError::Frame(FrameError::InvalidPacketOrder(
-                                          sent_command,
-                                          raw_response,
-                                      ))) => {
+                sent_command,
+                raw_response,
+            ))) => {
                 // Facciamo un loop per il momento
                 error!(
                     "InvalidPacketOrder {sent_command} - {:?} - Make Loop?? -",
@@ -195,12 +199,15 @@ where
         p1: f64,
         p2: f64,
     ) -> Result<(), ConnectorError> {
-        let response = self.send_and_read_command(Command::GetFrequencyRegion).await?;
+        let response = self
+            .send_and_read_command(Command::GetFrequencyRegion)
+            .await?;
 
         if let CommandResult::GetFrequencyRegion(Ok(region)) = response {
             if region.0 != p0 || region.1 != p1 || region.2 != p2 {
                 debug!("NEED CHANGE FREQUENCY REGION: {} {} {}", p0, p1, p2);
-                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2)).await?;
+                self.send_and_read_command(Command::SetDefaultFrequencyRegion(p0, p1, p2))
+                    .await?;
             }
             Ok(())
         } else {
@@ -254,12 +261,15 @@ where
     }
 
     async fn set_ant_connection_detector_if_not(&mut self, p0: u8) -> Result<(), ConnectorError> {
-        let response = self.send_and_read_command(Command::GetAntConnectionDetector).await?;
+        let response = self
+            .send_and_read_command(Command::GetAntConnectionDetector)
+            .await?;
 
         if let CommandResult::GetAntConnectionDetector(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE ConnectionDetector value: {:?}", p0);
-                self.send_and_read_command(Command::SetAntConnectionDetector(p0.clone())).await?;
+                self.send_and_read_command(Command::SetAntConnectionDetector(p0.clone()))
+                    .await?;
             }
             Ok(())
         } else {
@@ -274,11 +284,14 @@ where
         &mut self,
         p0: RfLinkProfile,
     ) -> Result<(), ConnectorError> {
-        let response = self.send_and_read_command(Command::GetRfLinkProfile).await?;
+        let response = self
+            .send_and_read_command(Command::GetRfLinkProfile)
+            .await?;
         if let CommandResult::GetRfLinkProfile(Ok(setted_values)) = response {
             if setted_values != p0 {
                 debug!("NEED CHANGE RfLinkProfile to value: {:?}", p0);
-                self.send_and_read_command(Command::SetRfLinkProfile(p0.clone())).await?;
+                self.send_and_read_command(Command::SetRfLinkProfile(p0.clone()))
+                    .await?;
             }
             Ok(())
         } else {
@@ -290,12 +303,14 @@ where
     }
 
     async fn make_a_read_single_antenna(&mut self) -> Result<Vec<Tag>, ConnectorError> {
-        let response = self.send_and_read_command(Command::CustomizeSessionTargetInventory(
-            Session::S1,
-            Target::A,
-            PhaseStatus::Off,
-            1,
-        )).await?;
+        let response = self
+            .send_and_read_command(Command::CustomizeSessionTargetInventory(
+                Session::S1,
+                Target::A,
+                PhaseStatus::Off,
+                1,
+            ))
+            .await?;
         debug!("Risposta ricevuta: {response}\n");
 
         if let CommandResult::ResponsePackets(Ok(setted_values)) = response {
@@ -304,6 +319,26 @@ where
         } else {
             Err(ConnectorError::TagReadError(format!("Failed to read Tags")))
         }
+    }
+
+    fn new_fast_switching_antenna_iterator(
+        &mut self,
+        antenna_cfg: Vec<(u8, u8)>,
+    ) -> impl Stream<Item = Result<Tag, ConnectorError>> {
+        let cmd = Command::FastSwitchAntInventory(
+            antenna_cfg,
+            0,
+            Session::S1,
+            Target::A,
+            PhaseStatus::Off,
+            1,
+        );
+
+        let iter_tag = tag_stream_async(self, cmd, std::time::Duration::from_secs(0));
+
+        // let iter_tag = tag_iterator::tag_stream(self, cmd, std::time::Duration::from_secs(0));
+
+        iter_tag
     }
 }
 
@@ -325,10 +360,16 @@ mod tests {
 
     impl AsyncMockSocket {
         fn new(read_data: Vec<Result<Vec<u8>, io::Error>>) -> Self {
-            Self { read_data, read_index: 0, written: Vec::new() }
+            Self {
+                read_data,
+                read_index: 0,
+                written: Vec::new(),
+            }
         }
 
-        fn written(&self) -> &[u8] { &self.written }
+        fn written(&self) -> &[u8] {
+            &self.written
+        }
     }
 
     impl AsyncRead for AsyncMockSocket {
@@ -381,7 +422,12 @@ mod tests {
     }
 
     fn new_connector_with(socket: AsyncMockSocket) -> Connector<AsyncMockSocket> {
-        Connector::new(socket, 1, vec![30], (crate::frequency_references::Spectrum::CHN, 920.125, 924.875))
+        Connector::new(
+            socket,
+            1,
+            vec![30],
+            (crate::frequency_references::Spectrum::CHN, 920.125, 924.875),
+        )
     }
 
     #[tokio::test]
@@ -390,7 +436,10 @@ mod tests {
         let mut connector = new_connector_with(socket);
 
         let data = vec![0xAA, 0xBB, 0xCC, 0xDD];
-        connector.send_frame(&data).await.expect("send_frame fallita");
+        connector
+            .send_frame(&data)
+            .await
+            .expect("send_frame fallita");
 
         let written = connector.into_inner().written().to_vec();
         assert_eq!(written, data);
@@ -428,7 +477,11 @@ mod tests {
         let socket = AsyncMockSocket::new(vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))]);
         let mut connector = new_connector_with(socket);
 
-        let err = connector.read_response().await.err().expect("atteso errore");
+        let err = connector
+            .read_response()
+            .await
+            .err()
+            .expect("atteso errore");
         assert_eq!(err.kind(), io::ErrorKind::Other);
     }
 }

@@ -1,5 +1,6 @@
-use log::{LevelFilter,   info};
+use log::{LevelFilter, info, debug, error};
 use std::time::Duration;
+use futures_util::stream::StreamExt; // for `.next().await` on streams
 use tokio::time::sleep;
 use tokio_serial::{ SerialPortBuilderExt};
 
@@ -11,7 +12,7 @@ use e710_uhf::connector::AsyncIO;
 use e710_uhf::connector::Connector;
 use e710_uhf::frame::command::{BeeperMode, Command};
 use e710_uhf::frequency_references::Spectrum;
-
+use crate::common::ns_to_iso;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -78,23 +79,23 @@ async fn main() -> std::io::Result<()> {
     info!("Configuration: {:#?}", cfgs);
 
     info!("\n\n== Avvio lettore fast switching:");
-    todo!("Completare lettore TAGS");
-    // loop {
-    //     debug!("Waiting for tags...");
-    //
-    //     let mut iter_tag = connector
-    //         .new_fast_switching_antenna_iterator(cfgs.clone())
-    //         .unwrap();
-    //     while let Some(res) = iter_tag.next() {
-    //         match res {
-    //             Ok(tag) => {
-    //                 info!("- { } {tag}", ns_to_iso(tag.received_at_ns));
-    //             }
-    //             Err(e) => error!("Error reading tags: {:?}", e),
-    //         }
-    //     }
-    //     sleep(Duration::from_millis(30));
-    // }
+    loop {
+        debug!("Waiting for tags...");
+
+        // Streams produced by async_stream are not Unpin by default; pin the stream
+        let mut iter_tag = Box::pin(
+            connector.new_fast_switching_antenna_iterator(cfgs.clone())
+        );
+        while let Some(res) = iter_tag.as_mut().next().await {
+            match res {
+                Ok(tag) => {
+                    info!("- { } {tag}", ns_to_iso(tag.received_at_ns));
+                }
+                Err(e) => error!("Error reading tags: {:?}", e),
+            }
+        }
+        sleep(Duration::from_millis(30));
+    }
 
     // sleep(Duration::from_secs(4));
 

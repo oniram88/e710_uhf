@@ -1,5 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run async_get_module_info_by_rs232" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="buildProfileId" value="dev" />
     <option name="command" value="run --package e710_uhf --example async_get_module_info_by_rs232 --features async" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
