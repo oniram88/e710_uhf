@@ -516,134 +516,136 @@ impl SerializableCommand for Command {
             return Err(FrameError::InvalidPacket(raw.clone()));
         }
 
-        let (length, raw_command, checksum, data) = split_in_base_frame_parts(&raw);
+        if let Some((length, raw_command, checksum, data)) = try_split_in_base_frame_parts(&raw) {
+            if raw_command != sent_command.to_bytes()[0] {
+                return Err(FrameError::InvalidPacketOrder(sent_command.clone(), raw));
+            }
 
-        if raw_command != sent_command.to_bytes()[0] {
-            return Err(FrameError::InvalidPacketOrder(sent_command.clone(), raw));
-        }
-
-        match raw_command {
-            0x8B => {
-                // In questo caso abbiamo più pacchetti concatenati con più checksums
-                Ok(CommandResult::ResponsePackets(parse_response!(
+            match raw_command {
+                0x8B => {
+                    // In questo caso abbiamo più pacchetti concatenati con più checksums
+                    Ok(CommandResult::ResponsePackets(parse_response!(
+                        data,
+                        |_data: Vec<u8>| { Ok(parse_tag_response(raw, sent_command)?) }
+                    )))
+                }
+                0x8A => Ok(CommandResult::ResponsePackets(parse_response!(
                     data,
                     |_data: Vec<u8>| { Ok(parse_tag_response(raw, sent_command)?) }
-                )))
-            }
-            0x8A => Ok(CommandResult::ResponsePackets(parse_response!(
-                data,
-                |_data: Vec<u8>| { Ok(parse_tag_response(raw, sent_command)?) }
-            ))),
-            // Questi sono gli altri comandi che sono composti da solamente un pacchetto
-            _ => {
-                if checksum != calculate_checksum(&raw[0..(raw.len() - 1)]) {
-                    return Err(FrameError::InvalidChecksum);
-                }
-
-                debug!(
-                    "SENDED COMMAND:[{sent_command}] - RECEIVED CMD[0x{:02X}] DATA[{:?}] CHECKSUM[{}]",
-                    raw_command, data, checksum
-                );
-
-                match raw_command {
-                    0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
-                        data
-                    ))),
-                    0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
-                    0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
-                    0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
-                        data,
-                        (0xD0, 0xD3),
-                        |data: Vec<u8>| {
-                            RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
-                                FrameError::InvalidCommand(format!(
-                                    "Invalid RF link profile: 0x{:02X}",
-                                    data[0]
-                                ))
-                            })
-                        }
-                    ))),
-                    0x70 => Ok(CommandResult::Reset(parse_response!(data))),
-                    0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
-                    0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
-                    0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
-                    0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(data, |_| {
-                        if let Command::SetBeeperMode(beeper_mode) = sent_command {
-                            Ok(beeper_mode.clone())
-                        } else {
-                            Err(FrameError::ResponseNotExpected(raw.clone()))
-                        }
-                    }))),
-                    0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
-                        data,
-                        |data: Vec<u8>| {
-                            let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
-                            Ok(data[1] as f64 * sign)
-                        }
-                    ))),
-                    0x76 => Ok(CommandResult::Reset(parse_response!(data))),
-                    0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
-                    0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
-                        data
-                    ))),
-                    0x79 => {
-                        match data[0] {
-                            0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                parse_response!(data, |data: Vec<u8>| Ok((
-                                    Spectrum::FCC,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
-                                ))),
-                            )),
-                            0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                parse_response!(data, |data: Vec<u8>| Ok((
-                                    Spectrum::ETSI,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
-                                ))),
-                            )),
-                            0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                parse_response!(data, |data: Vec<u8>| Ok((
-                                    Spectrum::CHN,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
-                                ))),
-                            )),
-                            0x04 if length == 9 => {
-                                // todo!("Da completare la versione impostata dall'utente");
-                                Ok(CommandResult::GetFrequencyRegion(Ok((
-                                    Spectrum::CUSTOM,
-                                    0.0,
-                                    0.0,
-                                ))))
-                            }
-                            _ => Err(FrameError::ResponseNotExpected(raw.clone())),
-                        }
+                ))),
+                // Questi sono gli altri comandi che sono composti da solamente un pacchetto
+                _ => {
+                    if checksum != calculate_checksum(&raw[0..(raw.len() - 1)]) {
+                        return Err(FrameError::InvalidChecksum);
                     }
-                    0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
-                        data,
-                        (0x00, 0x1E),
-                        |data: Vec<u8>| {
-                            debug!("RF Port Return Loss: {:?}", data);
 
-                            let rl_db = data[0] as f64;
-                            if rl_db == 0.0 {
-                                Err(FrameError::AntennaNotConnected)
+                    debug!(
+                        "SENDED COMMAND:[{sent_command}] - RECEIVED CMD[0x{:02X}] DATA[{:?}] CHECKSUM[{}]",
+                        raw_command, data, checksum
+                    );
+
+                    match raw_command {
+                        0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
+                            data
+                        ))),
+                        0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
+                        0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
+                        0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
+                            data,
+                            (0xD0, 0xD3),
+                            |data: Vec<u8>| {
+                                RfLinkProfile::from_u8(data[0]).ok_or_else(|| {
+                                    FrameError::InvalidCommand(format!(
+                                        "Invalid RF link profile: 0x{:02X}",
+                                        data[0]
+                                    ))
+                                })
+                            }
+                        ))),
+                        0x70 => Ok(CommandResult::Reset(parse_response!(data))),
+                        0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+                        0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
+                        0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
+                        0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(data, |_| {
+                            if let Command::SetBeeperMode(beeper_mode) = sent_command {
+                                Ok(beeper_mode.clone())
                             } else {
-                                let x = 10f64.powf(rl_db / 20.0);
-                                let vswr = (x + 1.0) / (x - 1.0);
-
-                                Ok(vswr)
+                                Err(FrameError::ResponseNotExpected(raw.clone()))
+                            }
+                        }))),
+                        0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
+                            data,
+                            |data: Vec<u8>| {
+                                let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
+                                Ok(data[1] as f64 * sign)
+                            }
+                        ))),
+                        0x76 => Ok(CommandResult::Reset(parse_response!(data))),
+                        0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
+                        0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
+                            data
+                        ))),
+                        0x79 => {
+                            match data[0] {
+                                0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                    parse_response!(data, |data: Vec<u8>| Ok((
+                                        Spectrum::FCC,
+                                        get_frequency(data[1]),
+                                        get_frequency(data[2])
+                                    ))),
+                                )),
+                                0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                    parse_response!(data, |data: Vec<u8>| Ok((
+                                        Spectrum::ETSI,
+                                        get_frequency(data[1]),
+                                        get_frequency(data[2])
+                                    ))),
+                                )),
+                                0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                    parse_response!(data, |data: Vec<u8>| Ok((
+                                        Spectrum::CHN,
+                                        get_frequency(data[1]),
+                                        get_frequency(data[2])
+                                    ))),
+                                )),
+                                0x04 if length == 9 => {
+                                    // todo!("Da completare la versione impostata dall'utente");
+                                    Ok(CommandResult::GetFrequencyRegion(Ok((
+                                        Spectrum::CUSTOM,
+                                        0.0,
+                                        0.0,
+                                    ))))
+                                }
+                                _ => Err(FrameError::ResponseNotExpected(raw.clone())),
                             }
                         }
-                    ))),
+                        0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
+                            data,
+                            (0x00, 0x1E),
+                            |data: Vec<u8>| {
+                                debug!("RF Port Return Loss: {:?}", data);
 
-                    _ => Err(FrameError::InvalidCommand(format!(
-                        "Invalid Response command code: {}",
-                        raw[0]
-                    ))),
+                                let rl_db = data[0] as f64;
+                                if rl_db == 0.0 {
+                                    Err(FrameError::AntennaNotConnected)
+                                } else {
+                                    let x = 10f64.powf(rl_db / 20.0);
+                                    let vswr = (x + 1.0) / (x - 1.0);
+
+                                    Ok(vswr)
+                                }
+                            }
+                        ))),
+
+                        _ => Err(FrameError::InvalidCommand(format!(
+                            "Invalid Response command code: {}",
+                            raw[0]
+                        ))),
+                    }
                 }
             }
+        } else {
+            return Err(FrameError::InvalidPacket(raw.clone()));
         }
     }
 }
@@ -654,12 +656,21 @@ impl SerializableCommand for Command {
 /// - raw_command identification
 /// - checksum
 /// - data (from byte 4 to length - 1)
-fn split_in_base_frame_parts(raw: &[u8]) -> (usize, u8, u8, Vec<u8>) {
+fn try_split_in_base_frame_parts(raw: &[u8]) -> Option<(usize, u8, u8, Vec<u8>)> {
+    if raw.len() < 2 {
+        return None;
+    }
     let length = raw[1] as usize;
+    if length < 3 {
+        return None;
+    }
+    if raw.len() < length + 2 {
+        return None;
+    }
     let raw_command = raw[3];
     let checksum = raw[length + 1];
     let data = (&raw[4..(4 + length - 3)]).to_vec();
-    (length, raw_command, checksum, data)
+    Some((length, raw_command, checksum, data))
 }
 
 fn parse_tag_response(
@@ -677,7 +688,7 @@ fn parse_tag_response(
 
     for frame in packets {
         // devo elaborare il pacchetto
-        let (length, _raw_command, checksum, data) = split_in_base_frame_parts(frame);
+        let (length, _raw_command, checksum, data) = try_split_in_base_frame_parts(frame).unwrap();
         if checksum != calculate_checksum(&frame[0..(frame.len() - 1)]) {
             return Err(FrameError::InvalidChecksum);
         }
@@ -738,7 +749,7 @@ pub struct ReadResult {
     pub total_read: u32,
 }
 
-fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
+pub fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
     let mut packets = Vec::new();
     let mut offset = 0;
 
@@ -772,6 +783,7 @@ fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frame::Frame;
     use paste::paste;
 
     macro_rules! test_command_to_bytes {
@@ -1175,5 +1187,48 @@ mod tests {
         // in case of malformed packet no results
         let test_packets = vec![0x11, 0x32];
         assert!(split_packets(&test_packets).is_empty());
+    }
+    #[test]
+    fn test_try_split_in_base_frame_parts_too_short() {
+        assert!(try_split_in_base_frame_parts(&[]).is_none());
+        assert!(try_split_in_base_frame_parts(&[0xA0]).is_none());
+    }
+
+    #[test]
+    fn test_try_split_in_base_frame_parts_invalid_length() {
+        let raw = vec![0xA0, 0x02, 0x01, 0x72];
+        assert!(try_split_in_base_frame_parts(&raw).is_none());
+    }
+
+    #[test]
+    fn test_try_split_in_base_frame_parts_incomplete_packet() {
+        let raw = vec![0xA0, 0x04, 0x01, 0x74, 0x01];
+        assert!(try_split_in_base_frame_parts(&raw).is_none());
+    }
+
+    #[test]
+    fn test_try_split_in_base_frame_parts_valid_packet() {
+        let frame = Frame::new(&Command::SetWorkAntenna(1)).to_bytes();
+        let (length, raw_command, checksum, data) =
+            try_split_in_base_frame_parts(&frame).expect("expected valid frame split");
+
+        assert_eq!(length, 0x04);
+        assert_eq!(raw_command, 0x74);
+        assert_eq!(checksum, frame[frame.len() - 1]);
+        assert_eq!(data, vec![0x01]);
+    }
+
+    #[test]
+    fn test_try_split_in_base_frame_parts_with_trailing_bytes() {
+        let mut frame = Frame::new(&Command::GetFirmwareVersion).to_bytes();
+        frame.extend([0xFF, 0xEE]);
+
+        let (length, raw_command, checksum, data) =
+            try_split_in_base_frame_parts(&frame).expect("expected valid frame split");
+
+        assert_eq!(length, 0x03);
+        assert_eq!(raw_command, 0x72);
+        assert_eq!(checksum, frame[0x03 + 1]);
+        assert!(data.is_empty());
     }
 }

@@ -3,8 +3,9 @@ use crate::frame::command::{
     Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
 };
 use crate::tag::Tag;
-use crate::{ tag_stream_async};
+use crate::tag_stream_async;
 use async_trait::async_trait;
+use bytes::BytesMut;
 use futures_core::Stream;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -19,7 +20,7 @@ pub trait AsyncIO {
     async fn write_all(&mut self, data: &[u8]) -> io::Result<()>;
 
     async fn send_frame(&mut self, frame: &[u8]) -> io::Result<()>;
-    async fn read_response(&mut self) -> io::Result<Vec<u8>>;
+    async fn read_response(&mut self, sent_command: &Command) -> io::Result<CommandResult>;
     async fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError>;
     async fn send_and_read_command(
         &mut self,
@@ -106,9 +107,8 @@ where
         self.socket.flush().await
     }
 
-    // TODO codice parzialmente duplicato in sync e async
-    async fn read_response(&mut self) -> io::Result<Vec<u8>> {
-        let mut buffer = Vec::new();
+    async fn read_response(&mut self, sent_command: &Command) -> io::Result<CommandResult> {
+        let mut buffer = BytesMut::with_capacity(1024);
         let mut temp = [0u8; 1024];
 
         let timeout_duration = Duration::from_millis(TIMEOUT_WAITING_PACKET);
@@ -117,6 +117,10 @@ where
             match timeout(timeout_duration, self.socket.read(&mut temp)).await {
                 Ok(Ok(n)) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
+                    if let Some(o) = try_parsing_results(Vec::from(buffer.clone()), sent_command) {
+                        debug_print_vec("RX", &buffer);
+                        return Ok(o);
+                    }
                 }
                 Ok(Ok(_)) => {
                     // n == 0 → porta chiusa
@@ -131,7 +135,10 @@ where
             }
         }
 
-        Ok(buffer)
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Timeout waiting for response",
+        ))
     }
 
     async fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
@@ -165,9 +172,10 @@ where
         &mut self,
         sent_command: &Command,
     ) -> Result<CommandResult, ConnectorError> {
-        let response = timed_debug!("Response time:", self.read_response().await?);
-        debug_print_vec("RX", &response);
-        Ok(Command::from_byte(response, sent_command)?)
+        Ok(timed_debug!(
+            "Response time:",
+            self.read_response(sent_command).await?
+        ))
     }
 
     async fn setup_reader(&mut self) -> Result<(), ConnectorError> {
@@ -342,6 +350,17 @@ where
     }
 }
 
+/// Si occupa di controllare se abbiamo ricevuto tutti i byte per la comunicazione
+fn try_parsing_results(buf: Vec<u8>, sent_command: &Command) -> Option<CommandResult> {
+    match Command::from_byte(buf, sent_command) {
+        Ok(o) => {
+            debug!("Ricevuto tutti i byte per la comunicazione");
+            Some(o)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(all(test, feature = "async"))]
 mod tests {
     use super::*;
@@ -443,45 +462,5 @@ mod tests {
 
         let written = connector.into_inner().written().to_vec();
         assert_eq!(written, data);
-    }
-
-    #[tokio::test]
-    async fn test_async_read_response_success_single_chunk() {
-        let socket = AsyncMockSocket::new(vec![Ok(vec![0x01, 0x02, 0x03])]);
-        let mut connector = new_connector_with(socket);
-
-        let response = connector.read_response().await.expect("read_response ok");
-        assert_eq!(response, vec![0x01, 0x02, 0x03]);
-    }
-
-    #[tokio::test]
-    async fn test_async_read_response_success_multi_chunk() {
-        let socket = AsyncMockSocket::new(vec![Ok(vec![0x04, 0x05]), Ok(vec![0x06])]);
-        let mut connector = new_connector_with(socket);
-
-        let response = connector.read_response().await.expect("read_response ok");
-        assert_eq!(response, vec![0x04, 0x05, 0x06]);
-    }
-
-    #[tokio::test]
-    async fn test_async_read_response_empty() {
-        let socket = AsyncMockSocket::new(vec![]); // EOF immediato
-        let mut connector = new_connector_with(socket);
-
-        let response = connector.read_response().await.expect("read_response ok");
-        assert!(response.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_async_read_response_error() {
-        let socket = AsyncMockSocket::new(vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))]);
-        let mut connector = new_connector_with(socket);
-
-        let err = connector
-            .read_response()
-            .await
-            .err()
-            .expect("atteso errore");
-        assert_eq!(err.kind(), io::ErrorKind::Other);
     }
 }

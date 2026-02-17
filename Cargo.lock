@@ -196,6 +196,7 @@ version = "0.2.0"
 dependencies = [
  "async-stream",
  "async-trait",
+ "bytes",
  "chrono",
  "env_logger",
  "futures-core",
