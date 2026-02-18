@@ -111,7 +111,7 @@ where
         let mut buffer = BytesMut::with_capacity(1024);
         let mut temp = [0u8; 1024];
 
-        let timeout_duration = Duration::from_millis(TIMEOUT_WAITING_PACKET);
+        let timeout_duration = Duration::from_millis(self.timeout_waiting_packet);
 
         loop {
             match timeout(timeout_duration, self.socket.read(&mut temp)).await {
@@ -127,9 +127,9 @@ where
                     break;
                 }
                 Ok(Err(e)) => return Err(e),
-                Err(_) => {
+                Err(e) => {
                     // timeout scaduto
-                    debug!("Timeout waiting for response");
+                    debug!("Timeout waiting for response {e}");
                     break;
                 }
             }
@@ -446,6 +446,7 @@ mod tests {
             1,
             vec![30],
             (crate::frequency_references::Spectrum::CHN, 920.125, 924.875),
+            None
         )
     }
 

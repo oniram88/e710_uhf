@@ -31,7 +31,7 @@ async fn main() -> std::io::Result<()> {
     info!("Connesso con successo!");
 
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
+    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0),None);
 
     connector.setup_reader().await.unwrap();
 

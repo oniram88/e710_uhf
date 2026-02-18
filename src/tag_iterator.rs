@@ -169,7 +169,7 @@ mod tests {
         ]);
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0),None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn test_tag_iterator_send_error() {
         let stream = MockStream::new_failing_write();
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0),None);
 
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
@@ -203,7 +203,7 @@ mod tests {
     fn test_tag_iterator_read_error() {
         // Risposta incompleta o errata
         let stream = MockStream::new(vec![0xA0, 0x01, 0x02]);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0),None);
 
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
@@ -226,7 +226,7 @@ mod tests {
         ];
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0),None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
@@ -243,7 +243,7 @@ mod tests {
         ];
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0),None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
