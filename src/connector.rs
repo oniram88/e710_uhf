@@ -24,6 +24,7 @@ use crate::frequency_references::Spectrum;
 use log::{debug, info, warn};
 use std::fmt;
 use std::io::{self};
+use std::time::Duration;
 
 #[cfg(feature = "async")]
 mod async_impl;
@@ -33,7 +34,6 @@ pub use async_impl::*;
 
 const TIMEOUT_WAITING_PACKET: u64 = 150;
 
-
 pub struct Connector<S> {
     socket: S,
     total_number_of_antennas: u8,
@@ -42,7 +42,7 @@ pub struct Connector<S> {
     /// con più valori ogni antenna avrà la sua potenza distinta
     output_power: Vec<u8>,
     working_freq_setup: (Spectrum, f64, f64),
-    timeout_waiting_packet: u64,
+    timeout_waiting_packet: Duration,
 }
 
 impl<S> Connector<S> {
@@ -51,14 +51,15 @@ impl<S> Connector<S> {
         total_number_of_antennas: u8,
         output_power: Vec<u8>,
         working_freq_setup: (Spectrum, f64, f64),
-        timeout_waiting_packet: Option<u64>,
+        timeout_waiting_packet: Option<Duration>,
     ) -> Self {
         Connector {
             socket,
             total_number_of_antennas: total_number_of_antennas,
             working_freq_setup,
             output_power,
-            timeout_waiting_packet: timeout_waiting_packet.unwrap_or(TIMEOUT_WAITING_PACKET),
+            timeout_waiting_packet: timeout_waiting_packet
+                .unwrap_or(Duration::from_millis(TIMEOUT_WAITING_PACKET)),
         }
     }
     pub fn into_inner(self) -> S {
@@ -152,7 +153,6 @@ impl From<FrameError> for ConnectorError {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,8 +208,13 @@ mod tests {
     #[test]
     fn test_read_response_success() {
         let mock_port = MockPort::new(vec![Ok(vec![0x01, 0x02, 0x03])]);
-        let mut connector =
-            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut connector = Connector::new(
+            mock_port,
+            1,
+            vec![30],
+            (Spectrum::CHN, 920.125, 924.875),
+            None,
+        );
 
         let response = connector.read_response().unwrap();
         assert_eq!(response, vec![0x01, 0x02, 0x03]);
@@ -218,8 +223,13 @@ mod tests {
     #[test]
     fn test_read_response_empty() {
         let mock_port = MockPort::new(vec![]);
-        let mut connector =
-            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut connector = Connector::new(
+            mock_port,
+            1,
+            vec![30],
+            (Spectrum::CHN, 920.125, 924.875),
+            None,
+        );
 
         let response = connector.read_response().unwrap();
         assert!(response.is_empty());
@@ -231,8 +241,13 @@ mod tests {
             Err(io::Error::new(io::ErrorKind::WouldBlock, "would block")),
             Ok(vec![0x04, 0x05]),
         ]);
-        let mut connector =
-            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut connector = Connector::new(
+            mock_port,
+            1,
+            vec![30],
+            (Spectrum::CHN, 920.125, 924.875),
+            None,
+        );
 
         let response = connector.read_response().unwrap();
         assert_eq!(response, vec![0x04, 0x05]);
@@ -244,8 +259,13 @@ mod tests {
             io::ErrorKind::Other,
             "other error",
         ))]);
-        let mut connector =
-            Connector::new(mock_port, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut connector = Connector::new(
+            mock_port,
+            1,
+            vec![30],
+            (Spectrum::CHN, 920.125, 924.875),
+            None,
+        );
 
         let result = connector.read_response();
         assert!(result.is_err());

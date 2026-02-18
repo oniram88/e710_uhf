@@ -111,10 +111,8 @@ where
         let mut buffer = BytesMut::with_capacity(1024);
         let mut temp = [0u8; 1024];
 
-        let timeout_duration = Duration::from_millis(self.timeout_waiting_packet);
-
         loop {
-            match timeout(timeout_duration, self.socket.read(&mut temp)).await {
+            match timeout(self.timeout_waiting_packet, self.socket.read(&mut temp)).await {
                 Ok(Ok(n)) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
                     if let Some(o) = try_parsing_results(Vec::from(buffer.clone()), sent_command) {

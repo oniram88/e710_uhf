@@ -116,7 +116,7 @@ where
                     start = Instant::now();
                 }
                 Ok(_) => {
-                    if start.elapsed() > Duration::from_millis(self.timeout_waiting_packet) {
+                    if start.elapsed() > self.timeout_waiting_packet {
                         debug!("Timeout waiting for response internal read");
                         break;
                     }
@@ -336,6 +336,7 @@ mod tests {
     use crate::frequency_references::Spectrum;
     use std::io::{self, Read, Write};
     use std::time::Instant;
+    use crate::connector::TIMEOUT_WAITING_PACKET;
 
     // Mock sincrono minimale per simulare sequenze di lettura
     struct MockPort {
@@ -424,6 +425,6 @@ mod tests {
 
         assert!(rs.is_empty());
         // Verifichiamo che sia passato almeno (circa) il timeout configurato
-        assert!(elapsed_ms >= conn.timeout_waiting_packet.saturating_sub(10));
+        assert!(elapsed_ms >= TIMEOUT_WAITING_PACKET.saturating_sub(10));
     }
 }
