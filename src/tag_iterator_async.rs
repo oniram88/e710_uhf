@@ -1,12 +1,14 @@
 #![cfg(feature = "async")]
 
+use std::time::Duration;
 use crate::connector::{AsyncIO, Connector, ConnectorError};
 use crate::frame::command::{Command, CommandResult};
 use crate::tag::Tag;
 use async_stream::try_stream;
 use futures_core::stream::Stream;
-use log::{debug, error};
+use log::{debug, error, warn,info};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::time::sleep;
 
 /// Restituisce uno Stream asincrono di `Tag` ottenuti eseguendo il `sent_command`.
 ///
@@ -28,11 +30,18 @@ where
             Err::<(), ConnectorError>(e)?;
         }
 
+        // Fra spedizione comando e ricezione risposta attendiamo 23ms che sembrerebbero essere
+        // necessari per instaurare una corretta ricorrenza nelle letture.
+        // Nella documentazione viene menzionato che il tempo di round fra comando e lettura è
+        // di 23ms minimo
+        sleep(Duration::from_millis(23)).await;
+
         match connector.read_command(&sent_command).await {
             Ok(response) => {
                 debug!("Risposta ricevuta: {:?}", response);
                 match response {
                     CommandResult::ResponsePackets(Ok(setted_values)) => {
+                        info!("TAGS:{:?}", setted_values.0.len());
                         for tag in setted_values.0 {
                             yield tag;
                         }
@@ -45,6 +54,10 @@ where
                         unreachable!();
                     }
                 }
+            }
+            Err(ConnectorError::Timeout) => {
+                // In caso di Timeout facciamo un nuovo loop
+                warn!("Timeout inviando comando: {:?}", sent_command);
             }
             Err(e) => {
                 Err::<(), ConnectorError>(e)?;

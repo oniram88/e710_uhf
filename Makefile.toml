@@ -1,0 +1,15 @@
+[env]
+#REMOTE_CONNECTION="marino@rfid-receiver"
+REMOTE_CONNECTION="marino@10.42.0.1"
+
+
+[tasks.build]
+command = "cross"
+args = ["build", "--target=aarch64-unknown-linux-gnu","--example=async_get_module_info_by_rs232","--features=async"]
+
+[tasks.debug-deploy]
+dependencies = ["build"]
+script = [
+    "scp target/aarch64-unknown-linux-gnu/debug/examples/async_get_module_info_by_rs232 ${REMOTE_CONNECTION}:/home/marino/bin/",
+]
+

@@ -1,6 +1,6 @@
 use crate::connector::{
-    Connector, ConnectorError,  command_to_frame_bytes,
-    core_build_fast_switching_antennas, core_map_get_rf_port_return_loss, debug_print_vec,
+    Connector, ConnectorError, command_to_frame_bytes, core_build_fast_switching_antennas,
+    core_map_get_rf_port_return_loss, debug_print_vec,
 };
 use crate::frame::FrameError;
 use crate::frame::command::{
@@ -333,10 +333,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connector::TIMEOUT_WAITING_PACKET;
     use crate::frequency_references::Spectrum;
     use std::io::{self, Read, Write};
     use std::time::Instant;
-    use crate::connector::TIMEOUT_WAITING_PACKET;
 
     // Mock sincrono minimale per simulare sequenze di lettura
     struct MockPort {
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn test_sync_read_response_single_chunk() {
         let mock = MockPort::new(vec![Ok(vec![0xAA, 0xBB, 0xCC])]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
         let rs = conn.read_response().unwrap();
         assert_eq!(rs, vec![0xAA, 0xBB, 0xCC]);
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn test_sync_read_response_multi_chunk() {
         let mock = MockPort::new(vec![Ok(vec![0x01, 0x02]), Ok(vec![0x03, 0x04, 0x05])]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
         let rs = conn.read_response().unwrap();
         assert_eq!(rs, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
@@ -407,7 +407,7 @@ mod tests {
             Err(io::Error::new(io::ErrorKind::WouldBlock, "wb")),
             Ok(vec![0x10, 0x11, 0x12]),
         ]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
         let rs = conn.read_response().unwrap();
         assert_eq!(rs, vec![0x10, 0x11, 0x12]);
@@ -417,7 +417,7 @@ mod tests {
     fn test_sync_read_response_timeout_no_data() {
         // Nessun dato: la read() restituirà sempre Ok(0) e usciamo per timeout interno
         let mock = MockPort::new(vec![]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875),None);
+        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
         let start = Instant::now();
         let rs = conn.read_response().unwrap();

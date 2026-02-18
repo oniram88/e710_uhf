@@ -1,6 +1,7 @@
 use futures_util::stream::StreamExt; // for `.next().await` on streams
 use log::{LevelFilter, debug, error, info};
 use std::time::Duration;
+use serialport::{DataBits, FlowControl, Parity, StopBits};
 use tokio::time::sleep;
 use tokio_serial::SerialPortBuilderExt;
 
@@ -17,21 +18,29 @@ use e710_uhf::frequency_references::Spectrum;
 #[allow(unreachable_code)]
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    logger_builder(LevelFilter::Debug);
+    logger_builder(LevelFilter::Info);
 
     let serial = tokio_serial::new("/dev/ttyUSB0", 115200)
-        .timeout(Duration::from_millis(300))
+        .data_bits(DataBits::Eight)
+        .parity(Parity::None)
+        .stop_bits(StopBits::One)
+        .flow_control(FlowControl::None)
         .open_native_async()?;
+
 
     // let serial = serialport::open(&tokio_serial::new("/dev/ttyUSB0", 115200))
     //     .expect("Failed to open async serial port");
 
-    // let mut connector = UnifiedConnector::new(port);
-
     info!("Connesso con successo!");
 
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0),None);
+    let mut connector = Connector::new(
+        serial,
+        8,
+        vec![25],
+        (Spectrum::ETSI, 865.0, 868.0),
+        Some(Duration::from_millis(200)),
+    );
 
     connector.setup_reader().await.unwrap();
 
@@ -52,7 +61,7 @@ async fn main() -> std::io::Result<()> {
         // Lettura della risposta
         info!("Risposta ricevuta: {response}\n");
 
-        sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(5)).await;
     }
 
     info!("Get Antenna statistics");

@@ -38,7 +38,7 @@ pub fn logger_builder(level: LevelFilter) {
 #[allow(unreachable_code, unused)]
 pub fn test_connection(serial: impl Read + Write) -> std::io::Result<()> {
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0),None);
+    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0), None);
 
     connector.setup_reader().unwrap();
 
