@@ -123,10 +123,14 @@ where
                     }
                 }
                 Ok(Ok(_)) => {
+                    debug!("EOF - dispositivo probabilmente disconnesso");
                     // n == 0 → porta chiusa
                     break;
                 }
-                Ok(Err(e)) => return Err(e),
+                Ok(Err(e)) => {
+                    error!("Error reading from socket: {e}");
+                    return Err(e);
+                }
                 Err(e) => {
                     // timeout scaduto
                     debug!("Timeout waiting for response {e}");
