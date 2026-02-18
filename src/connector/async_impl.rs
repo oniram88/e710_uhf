@@ -112,27 +112,22 @@ where
         let mut temp = [0u8; 1024];
 
         loop {
-            match timeout(self.timeout_waiting_packet, self.socket.read(&mut temp)).await {
-                Ok(Ok(n)) if n > 0 => {
+            match self.socket.read(&mut temp).await {
+                Ok(n) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
                     if let Some(o) = try_parsing_results(Vec::from(buffer.clone()), sent_command) {
                         debug_print_vec("RX", &buffer);
                         return Ok(o);
                     }
                 }
-                Ok(Ok(_)) => {
+                Ok(_) => {
                     debug!("EOF - dispositivo probabilmente disconnesso");
                     // n == 0 → porta chiusa
                     break;
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     error!("Error reading from socket: {e}");
                     return Err(e);
-                }
-                Err(e) => {
-                    // timeout scaduto
-                    debug!("Timeout waiting for response {e}");
-                    break;
                 }
             }
         }
@@ -174,10 +169,19 @@ where
         &mut self,
         sent_command: &Command,
     ) -> Result<CommandResult, ConnectorError> {
-        Ok(timed_debug!(
+        timed_debug!(
             "Response time:",
-            self.read_response(sent_command).await?
-        ))
+            match tokio::time::timeout(
+                self.timeout_waiting_packet,
+                self.read_response(sent_command),
+            )
+            .await
+            {
+                Ok(Ok(res)) => Ok(res),
+                Ok(Err(e)) => Err(ConnectorError::Io(e)),
+                Err(_) => Err(ConnectorError::Timeout),
+            }
+        )
     }
 
     async fn setup_reader(&mut self) -> Result<(), ConnectorError> {
@@ -448,7 +452,7 @@ mod tests {
             1,
             vec![30],
             (crate::frequency_references::Spectrum::CHN, 920.125, 924.875),
-            None
+            None,
         )
     }
 
