@@ -9,7 +9,6 @@ use bytes::BytesMut;
 use futures_core::Stream;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::time::{Duration, timeout};
 
 #[async_trait]
 pub trait AsyncIO {
@@ -115,7 +114,7 @@ where
             match self.socket.read(&mut temp).await {
                 Ok(n) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
-                    if let Some(o) = try_parsing_results(Vec::from(buffer.clone()), sent_command) {
+                    if let Some(o) = try_parsing_results(buffer.as_ref(), sent_command) {
                         debug_print_vec("RX", &buffer);
                         return Ok(o);
                     }
@@ -123,7 +122,7 @@ where
                 Ok(_) => {
                     debug!("EOF - dispositivo probabilmente disconnesso");
                     // n == 0 → porta chiusa
-                    break;
+                    return Err(io::Error::new(io::ErrorKind::Interrupted, "EOF"));
                 }
                 Err(e) => {
                     error!("Error reading from socket: {e}");
@@ -131,11 +130,6 @@ where
                 }
             }
         }
-
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Timeout waiting for response",
-        ))
     }
 
     async fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
@@ -357,8 +351,8 @@ where
 }
 
 /// Si occupa di controllare se abbiamo ricevuto tutti i byte per la comunicazione
-fn try_parsing_results(buf: Vec<u8>, sent_command: &Command) -> Option<CommandResult> {
-    match Command::from_byte(buf, sent_command) {
+fn try_parsing_results(buf: &[u8], sent_command: &Command) -> Option<CommandResult> {
+    match Command::from_bytes(buf, sent_command) {
         Ok(o) => {
             debug!("Ricevuto tutti i byte per la comunicazione");
             Some(o)

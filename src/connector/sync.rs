@@ -168,7 +168,7 @@ where
     fn read_command(&mut self, sent_command: &Command) -> Result<CommandResult, ConnectorError> {
         let response = timed_debug!("Response time:", self.read_response()?);
         debug_print_vec("RX", &response);
-        Ok(Command::from_byte(response, sent_command)?)
+        Ok(Command::from_bytes(&*response, sent_command)?)
     }
 
     fn setup_reader(&mut self) -> Result<(), ConnectorError> {

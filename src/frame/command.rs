@@ -397,7 +397,7 @@ pub(crate) trait SerializableCommand {
     /// Returns a tuple of bytes (command, parameters)
     /// Parameters may be empty if not present
     fn to_bytes(&self) -> Vec<u8>;
-    fn from_byte(raw: Vec<u8>, sent_command: &Command) -> Result<CommandResult, FrameError>
+    fn from_bytes(raw: &[u8], sent_command: &Command) -> Result<CommandResult, FrameError>
     where
         Self: Sized;
 }
@@ -511,14 +511,20 @@ impl SerializableCommand for Command {
     /// [3] -> Command byte.
     /// [4..] -> Data from the reader.
     /// [length + 2] -> Checksum. Check all the bytes except itself.
-    fn from_byte(raw: Vec<u8>, sent_command: &Command) -> Result<CommandResult, FrameError> {
+    fn from_bytes(
+        raw: &[u8],
+        sent_command: &Command,
+    ) -> Result<CommandResult, FrameError> {
         if raw.len() < 4 {
-            return Err(FrameError::InvalidPacket(raw.clone()));
+            return Err(FrameError::InvalidPacket(raw.to_vec()));
         }
 
-        if let Some((length, raw_command, checksum, data)) = try_split_in_base_frame_parts(&raw) {
+        if let Some((length, raw_command, checksum, data)) = try_split_in_base_frame_parts(raw) {
             if raw_command != sent_command.to_bytes()[0] {
-                return Err(FrameError::InvalidPacketOrder(sent_command.clone(), raw));
+                return Err(FrameError::InvalidPacketOrder(
+                    sent_command.clone(),
+                    raw.to_vec(),
+                ));
             }
 
             match raw_command {
@@ -526,12 +532,12 @@ impl SerializableCommand for Command {
                     // In questo caso abbiamo più pacchetti concatenati con più checksums
                     Ok(CommandResult::ResponsePackets(parse_response!(
                         data,
-                        |_data: Vec<u8>| { Ok(parse_tag_response(raw, sent_command)?) }
+                        |_data: Vec<u8>| { Ok(parse_tag_response(raw.to_vec(), sent_command)?) }
                     )))
                 }
                 0x8A => Ok(CommandResult::ResponsePackets(parse_response!(
                     data,
-                    |_data: Vec<u8>| { Ok(parse_tag_response(raw, sent_command)?) }
+                    |_data: Vec<u8>| { Ok(parse_tag_response(raw.to_vec(), sent_command)?) }
                 ))),
                 // Questi sono gli altri comandi che sono composti da solamente un pacchetto
                 _ => {
@@ -570,7 +576,7 @@ impl SerializableCommand for Command {
                             if let Command::SetBeeperMode(beeper_mode) = sent_command {
                                 Ok(beeper_mode.clone())
                             } else {
-                                Err(FrameError::ResponseNotExpected(raw.clone()))
+                                Err(FrameError::ResponseNotExpected(raw.to_vec()))
                             }
                         }))),
                         0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
@@ -585,40 +591,38 @@ impl SerializableCommand for Command {
                         0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
                             data
                         ))),
-                        0x79 => {
-                            match data[0] {
-                                0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                    parse_response!(data, |data: Vec<u8>| Ok((
-                                        Spectrum::FCC,
-                                        get_frequency(data[1]),
-                                        get_frequency(data[2])
-                                    ))),
-                                )),
-                                0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                    parse_response!(data, |data: Vec<u8>| Ok((
-                                        Spectrum::ETSI,
-                                        get_frequency(data[1]),
-                                        get_frequency(data[2])
-                                    ))),
-                                )),
-                                0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
-                                    parse_response!(data, |data: Vec<u8>| Ok((
-                                        Spectrum::CHN,
-                                        get_frequency(data[1]),
-                                        get_frequency(data[2])
-                                    ))),
-                                )),
-                                0x04 if length == 9 => {
-                                    // todo!("Da completare la versione impostata dall'utente");
-                                    Ok(CommandResult::GetFrequencyRegion(Ok((
-                                        Spectrum::CUSTOM,
-                                        0.0,
-                                        0.0,
-                                    ))))
-                                }
-                                _ => Err(FrameError::ResponseNotExpected(raw.clone())),
+                        0x79 => match data[0] {
+                            0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                parse_response!(data, |data: Vec<u8>| Ok((
+                                    Spectrum::FCC,
+                                    get_frequency(data[1]),
+                                    get_frequency(data[2])
+                                ))),
+                            )),
+                            0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                parse_response!(data, |data: Vec<u8>| Ok((
+                                    Spectrum::ETSI,
+                                    get_frequency(data[1]),
+                                    get_frequency(data[2])
+                                ))),
+                            )),
+                            0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                                parse_response!(data, |data: Vec<u8>| Ok((
+                                    Spectrum::CHN,
+                                    get_frequency(data[1]),
+                                    get_frequency(data[2])
+                                ))),
+                            )),
+                            0x04 if length == 9 => {
+                                // todo!("Da completare la versione impostata dall'utente");
+                                Ok(CommandResult::GetFrequencyRegion(Ok((
+                                    Spectrum::CUSTOM,
+                                    0.0,
+                                    0.0,
+                                ))))
                             }
-                        }
+                            _ => Err(FrameError::ResponseNotExpected(raw.to_vec())),
+                        },
                         0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
                             data,
                             (0x00, 0x1E),
@@ -645,7 +649,7 @@ impl SerializableCommand for Command {
                 }
             }
         } else {
-            return Err(FrameError::InvalidPacket(raw.clone()));
+            Err(FrameError::InvalidPacket(raw.to_vec()))
         }
     }
 }
@@ -885,8 +889,8 @@ mod tests {
 
     #[test]
     fn test_parse_command_get_firmware_version() {
-        let cmd = Command::from_byte(
-            vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1],
+        let cmd = Command::from_bytes(
+            &*vec![0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1],
             &Command::GetFirmwareVersion,
         )
         .unwrap();
@@ -896,14 +900,14 @@ mod tests {
             matches!(cmd, CommandResult::GetFirmwareVersion(Ok(ref v)) if *v == expected_version)
         );
 
-        let err = Command::from_byte(vec![0x00], &Command::GetFirmwareVersion);
+        let err = Command::from_bytes(&*vec![0x00], &Command::GetFirmwareVersion);
         assert!(err.is_err());
     }
 
     #[test]
     fn test_parse_get_temperature() {
-        let cmd = Command::from_byte(
-            vec![0xA0, 0x05, 0x01, 0x7B, 0x01, 0x17, 0xC7],
+        let cmd = Command::from_bytes(
+            &*vec![0xA0, 0x05, 0x01, 0x7B, 0x01, 0x17, 0xC7],
             &Command::GetReaderTemperature,
         )
         .unwrap();
@@ -915,7 +919,7 @@ mod tests {
     #[test]
     fn test_parse_get_frequency_region() {
         let raw_packet = vec![0xA0, 0x06, 0x01, 0x79, 0x01, 0x07, 0x3B, 0x9D];
-        let result = Command::from_byte(raw_packet, &Command::GetFrequencyRegion).unwrap();
+        let result = Command::from_bytes(&*raw_packet, &Command::GetFrequencyRegion).unwrap();
 
         if let CommandResult::GetFrequencyRegion(Ok(region)) = result {
             assert_eq!(
@@ -930,7 +934,7 @@ mod tests {
     #[test]
     fn test_parse_get_work_antenna() {
         let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
-        let result = Command::from_byte(raw_packet, &Command::GetWorkAntenna).unwrap();
+        let result = Command::from_bytes(&*raw_packet, &Command::GetWorkAntenna).unwrap();
 
         if let CommandResult::GetWorkAntenna(Ok(pos)) = result {
             assert_eq!(pos, 1);
@@ -943,7 +947,7 @@ mod tests {
     fn test_from_byte_invalid_command_order() {
         // Invio GetFirmwareVersion (0x72), ma ricevo GetWorkAntenna (0x75)
         let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
-        let result = Command::from_byte(raw_packet.clone(), &Command::GetFirmwareVersion);
+        let result = Command::from_bytes(&*raw_packet.clone(), &Command::GetFirmwareVersion);
 
         match result {
             Err(FrameError::InvalidPacketOrder(sent, received)) => {
@@ -957,7 +961,7 @@ mod tests {
     #[test]
     fn test_from_byte_packet_too_short() {
         let raw_packet = vec![0xA0, 0x04, 0x01];
-        let result = Command::from_byte(raw_packet.clone(), &Command::GetFirmwareVersion);
+        let result = Command::from_bytes(&*raw_packet.clone(), &Command::GetFirmwareVersion);
 
         match result {
             Err(FrameError::InvalidPacket(received)) => {
@@ -971,7 +975,7 @@ mod tests {
     fn test_from_byte_invalid_checksum() {
         // GetWorkAntenna (0x75), checksum errato (dovrebbe essere 0xE6, mettiamo 0x00)
         let raw_packet = vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0x00];
-        let result = Command::from_byte(raw_packet, &Command::GetWorkAntenna);
+        let result = Command::from_bytes(&*raw_packet, &Command::GetWorkAntenna);
 
         match result {
             Err(FrameError::InvalidChecksum) => {}
