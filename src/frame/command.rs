@@ -102,8 +102,7 @@ impl Display for PhaseStatus {
     }
 }
 
-#[derive(Clone, Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Reset,
     // SetUartBaudRate,
@@ -190,8 +189,7 @@ pub enum Command {
     // Iso180006BQueryLock
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum CommandResult {
     Reset(Result<(), FrameError>),
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
@@ -702,7 +700,8 @@ fn parse_tag_response(
 
     for frame in packets {
         // devo elaborare il pacchetto
-        let (length, _raw_command, _checksum, data) = try_split_in_base_frame_parts_with_checksum(frame)?;
+        let (length, _raw_command, _checksum, data) =
+            try_split_in_base_frame_parts_with_checksum(frame)?;
 
         // Il primo frame (cioè l'ultimo avendo fatto il reverse) deve essere il pacchetto dei risultati
         // Quindi sappiamo esattamente quanto è lungo.
@@ -772,8 +771,7 @@ pub(crate) fn try_parsing_results(buf: &[u8], sent_command: &Command) -> Option<
     }
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ReadResult {
     pub antenna_id: u8,
     pub read_rate: u32,

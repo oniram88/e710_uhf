@@ -185,7 +185,6 @@ mod tests {
         assert!(res2.is_ok());
         assert_eq!(res2.unwrap().epc, "E28069150000501D63E2A04F");
 
-
         assert!(iterator.next().is_none());
     }
 

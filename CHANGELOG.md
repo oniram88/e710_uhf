@@ -2,6 +2,49 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.3.0 - 2026-02-20
+#### Features
+-  Split connector in Async e Sync capabilities with feature activation - (dfbfb06) - Marino Bonetti
+- Define as duration the timeout - (8ee5d0f) - Marino Bonetti
+- Better debug - (91446c4) - Marino Bonetti
+- Reso configurabile il timeout - (4ceb2f3) - Marino Bonetti
+- Ottimizzazione lettura pacchetti senza attendere timeout - (efcc005) - Marino Bonetti
+- Completa reimplementazione async - (429db6b) - Marino Bonetti
+- Implementazione versione async example - (efbe55c) - Marino Bonetti
+#### Bug Fixes
+- Rimozione commento - (4e20b35) - Marino Bonetti
+- Rimozione codice inutile - (4c690d1) - Marino Bonetti
+- Correzione lettura async - (82f21de) - Marino Bonetti
+- Introduzione tempo di attesa per lettura chip - (6770ca2) - Marino Bonetti
+- Correzione parsing pacchetti multipli - (6270c46) - Marino Bonetti
+- Ottimizzazione lettura dati - (5578a9b) - Marino Bonetti
+- Spostamento timeout lettura in modo sganciato dalla lettura del dato - (fadd25c) - Marino Bonetti
+- Correzione iniziale codice con iterator - (bda6e88) - Marino Bonetti
+- For common - (3657ef9) - Marino Bonetti
+#### Documentation
+- Add dev config - (bc86dfc) - Marino Bonetti
+- Add test execution command - (92d9bd2) - Marino Bonetti
+#### Tests
+- Add coverage for sync - (8d11575) - Marino Bonetti
+- Add coverage for async - (a8723bd) - Marino Bonetti
+- Add coverage - (882a319) - Marino Bonetti
+#### Refactoring
+- Rewrite async read data connection - (52a9872) - Marino Bonetti
+- Rename useful examples - (3a72c4f) - Marino Bonetti
+- Remove commented old code - (2794c45) - Marino Bonetti
+- Rimozione codice "non duplicato" per codice semplificato - (03a2164) - Marino Bonetti
+- Copia delle funzione da async a sync - (8ff3e86) - Marino Bonetti
+- Iniziale duplicazione codice - (5bed9e4) - Marino Bonetti
+- Iniziale spostamento in sync del codice implementato - (5b0c0cf) - Marino Bonetti
+- Predisposizione codice per unificazione connettore - (f47a9cf) - Marino Bonetti
+#### Miscellaneous Chores
+- Fix cog release procedure - (55dd9ef) - Marino Bonetti
+- Code formatting and minor refactoring for clarity and consistency across modules - (6c9e898) - Marino Bonetti
+- Formattazione - (916a1f5) - Marino Bonetti
+- Add test Configuration - (dd22025) - Marino Bonetti
+
+- - -
+
 ## 0.2.0 - 2026-02-12
 #### Bug Fixes
 - Corretto problema read blocking - (8820081) - Marino Bonetti

@@ -2,8 +2,7 @@ use crate::error_references::ErrorCode;
 use crate::frame::Command;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum FrameError {
     InvalidCommand(String),
     ResponseNotExpected(Vec<u8>),

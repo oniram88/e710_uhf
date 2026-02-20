@@ -1,5 +1,7 @@
 use super::*;
-use crate::frame::command::{try_parsing_results, Command, CommandResult, PhaseStatus, RfLinkProfile,  Session, Target};
+use crate::frame::command::{
+    Command, CommandResult, PhaseStatus, RfLinkProfile, Session, Target, try_parsing_results,
+};
 use crate::tag::Tag;
 use crate::tag_stream_async;
 use async_trait::async_trait;
@@ -349,8 +351,6 @@ where
         iter_tag
     }
 }
-
-
 
 #[cfg(all(test, feature = "async"))]
 mod tests {

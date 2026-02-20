@@ -1,7 +1,7 @@
 use futures_util::stream::StreamExt; // for `.next().await` on streams
 use log::{LevelFilter, debug, error, info};
-use std::time::Duration;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
+use std::time::Duration;
 use tokio::time::sleep;
 use tokio_serial::SerialPortBuilderExt;
 
@@ -26,7 +26,6 @@ async fn main() -> std::io::Result<()> {
         .stop_bits(StopBits::One)
         .flow_control(FlowControl::None)
         .open_native_async()?;
-
 
     // let serial = serialport::open(&tokio_serial::new("/dev/ttyUSB0", 115200))
     //     .expect("Failed to open async serial port");
