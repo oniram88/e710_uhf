@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run get_module_info" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+  <configuration default="false" name="Run get_module_info RS232" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="buildProfileId" value="dev" />
-    <option name="command" value="run --package e710_uhf --example get_module_info" />
+    <option name="command" value="run --package e710_uhf --example get_module_info_by_rs232" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

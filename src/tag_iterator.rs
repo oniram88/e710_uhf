@@ -1,3 +1,4 @@
+use crate::connector::sync::SyncIO;
 use crate::connector::{Connector, ConnectorError};
 use crate::frame::command::{Command, CommandResult};
 use crate::tag::Tag;
@@ -168,7 +169,8 @@ mod tests {
         ]);
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector =
+            Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0), None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
@@ -177,11 +179,12 @@ mod tests {
 
         let res1 = iterator.next().unwrap();
         assert!(res1.is_ok());
-        assert_eq!(res1.unwrap().epc, "E28069150000501D63E2A04F");
+        assert_eq!(res1.unwrap().epc, "E28069150000401D63E2A44F");
 
         let res2 = iterator.next().unwrap();
         assert!(res2.is_ok());
-        assert_eq!(res2.unwrap().epc, "E28069150000401D63E2A44F");
+        assert_eq!(res2.unwrap().epc, "E28069150000501D63E2A04F");
+
 
         assert!(iterator.next().is_none());
     }
@@ -189,7 +192,8 @@ mod tests {
     #[test]
     fn test_tag_iterator_send_error() {
         let stream = MockStream::new_failing_write();
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector =
+            Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0), None);
 
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
@@ -202,7 +206,8 @@ mod tests {
     fn test_tag_iterator_read_error() {
         // Risposta incompleta o errata
         let stream = MockStream::new(vec![0xA0, 0x01, 0x02]);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector =
+            Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0), None);
 
         let command = Command::GetWorkAntenna;
         let mut iterator = tag_stream(&mut connector, command, Duration::from_millis(0));
@@ -225,7 +230,8 @@ mod tests {
         ];
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector =
+            Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0), None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
@@ -242,7 +248,8 @@ mod tests {
         ];
 
         let stream = MockStream::new(raw_response);
-        let mut connector = Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0));
+        let mut connector =
+            Connector::new(stream, 1, vec![20], (Spectrum::ETSI, 865.0, 868.0), None);
 
         let command =
             Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);

@@ -9,12 +9,29 @@ license = "MIT"
 [dependencies]
 log = "0.4.29"
 
+# Dipendenze opzionali per async
+async-trait = { version = "0.1.89", optional = true }
+tokio = { version = "1", features = ["io-util", "time"], optional = true }
+futures-core = { version = "0.3", optional = true }
+async-stream = { version = "0.3", optional = true }
+bytes = "1.11.1"
+
+[features]
+default = []           # la feature async non è attiva di default
+async = ["tokio", "async-trait", "futures-core", "async-stream"]
+
 
 [dev-dependencies]
 paste = "1.0.15"
 env_logger = "0.11"
 chrono = "0.4"
 serialport = "4.8.1"
+tokio-serial = "5.4.5"
+futures-util = "0.3"
+## Tokio serve per compilare/girare gli esempi async che usano #[tokio::main]
+## Qui abilitiamo le feature necessarie al runtime e alle macro, senza
+## richiedere l'attivazione della feature opzionale della libreria.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util"] }
 
 
 

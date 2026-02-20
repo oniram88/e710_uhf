@@ -6,8 +6,10 @@ use log::{Level, LevelFilter, debug, error, info};
 use std::thread::sleep;
 use std::time::{Duration, UNIX_EPOCH};
 
+use e710_uhf::connector::sync::SyncIO;
 use std::io::{Read, Write};
 
+#[allow(unused)]
 pub fn ns_to_iso(ts_ns: u64) -> String {
     let secs = ts_ns / 1_000_000_000;
     let nanos = (ts_ns % 1_000_000_000) as u32;
@@ -33,10 +35,10 @@ pub fn logger_builder(level: LevelFilter) {
         .init();
 }
 
-#[allow(unreachable_code)]
+#[allow(unreachable_code, unused)]
 pub fn test_connection(serial: impl Read + Write) -> std::io::Result<()> {
     // Creazione del connector utilizzando lo stream TCP
-    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0));
+    let mut connector = Connector::new(serial, 8, vec![25], (Spectrum::ETSI, 865.0, 868.0), None);
 
     connector.setup_reader().unwrap();
 

@@ -3,10 +3,12 @@ use crate::frame::Command;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum FrameError {
     InvalidCommand(String),
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
+    IncompletePacket(Vec<u8>),
     FailedResponse(ErrorCode, Vec<u8>),
     AntennaNotConnected,
     TagParsingError(Vec<u8>),
@@ -25,6 +27,9 @@ impl Display for FrameError {
                 write!(f, "Response not expected [RX] {:02X?}", response)
             }
             FrameError::InvalidPacket(packet) => write!(f, "Invalid packet [RX] {:02X?}", packet),
+            FrameError::IncompletePacket(packet) => {
+                write!(f, "Incomplete packet [RX] {:02X?}", packet)
+            }
             FrameError::FailedResponse(code, packet) => write!(
                 f,
                 "Failed response with code {:?} and DATA {:02X?}",

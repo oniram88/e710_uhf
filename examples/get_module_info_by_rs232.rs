@@ -14,16 +14,6 @@ fn main() -> std::io::Result<()> {
         .timeout(Duration::from_millis(300))
         .open()?;
 
-    // Indirizzo IP e porta del lettore UHF
-    // let addr = "192.168.0.178:4001";
-    //
-    // info!("Tentativo di connessione a {}...", addr);
-    //
-    // // Apertura della connessione TCP con un timeout
-    // let stream = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(5))?;
-    // stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-    // stream.set_write_timeout(Some(Duration::from_secs(2)))?;
-
     info!("Connesso con successo!");
 
     common::test_connection(serial)

@@ -4,7 +4,7 @@ pub mod frame_error;
 use crate::frame::command::{Command, SerializableCommand};
 pub(crate) use crate::frame::frame_error::FrameError;
 
-const FRAME_HEADER: u8 = 0xA0;
+pub(crate) const FRAME_HEADER: u8 = 0xA0;
 const RS485_ADDRESS: u8 = 0x01;
 
 pub struct Frame {
