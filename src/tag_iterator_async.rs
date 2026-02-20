@@ -30,12 +30,6 @@ where
             Err::<(), ConnectorError>(e)?;
         }
 
-        // Fra spedizione comando e ricezione risposta attendiamo 23ms che sembrerebbero essere
-        // necessari per instaurare una corretta ricorrenza nelle letture.
-        // Nella documentazione viene menzionato che il tempo di round fra comando e lettura è
-        // di 23ms minimo
-        sleep(Duration::from_millis(23)).await;
-
         match connector.read_command(&sent_command).await {
             Ok(response) => {
                 debug!("Risposta ricevuta: {:?}", response);

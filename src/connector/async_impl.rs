@@ -1,7 +1,5 @@
 use super::*;
-use crate::frame::command::{
-    Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
-};
+use crate::frame::command::{try_parsing_results, Command, CommandResult, PhaseStatus, RfLinkProfile,  Session, Target};
 use crate::tag::Tag;
 use crate::tag_stream_async;
 use async_trait::async_trait;
@@ -9,6 +7,7 @@ use bytes::BytesMut;
 use futures_core::Stream;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time::sleep;
 
 #[async_trait]
 pub trait AsyncIO {
@@ -111,6 +110,7 @@ where
         let mut temp = [0u8; 1024];
 
         loop {
+            sleep(Duration::from_micros(1300)).await;
             match self.socket.read(&mut temp).await {
                 Ok(n) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
@@ -350,16 +350,7 @@ where
     }
 }
 
-/// Si occupa di controllare se abbiamo ricevuto tutti i byte per la comunicazione
-fn try_parsing_results(buf: &[u8], sent_command: &Command) -> Option<CommandResult> {
-    match Command::from_bytes(buf, sent_command) {
-        Ok(o) => {
-            debug!("Ricevuto tutti i byte per la comunicazione");
-            Some(o)
-        }
-        _ => None,
-    }
-}
+
 
 #[cfg(all(test, feature = "async"))]
 mod tests {
