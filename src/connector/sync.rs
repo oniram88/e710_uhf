@@ -110,6 +110,8 @@ where
         let mut start = Instant::now();
 
         loop {
+            //dobbiamo inserire un micro sleep per dare il tempo al chip sottostante di inviarci i dati
+            std::thread::sleep(Duration::from_micros(1300));
             match self.socket.read(&mut temp) {
                 Ok(n) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
