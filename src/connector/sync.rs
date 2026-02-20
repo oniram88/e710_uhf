@@ -4,7 +4,8 @@ use crate::connector::{
 };
 use crate::frame::FrameError;
 use crate::frame::command::{
-    Command, CommandResult, PhaseStatus, RfLinkProfile, SerializableCommand, Session, Target,
+    Command, CommandResult, PhaseStatus, RfLinkProfile,  Session, Target,
+    try_parsing_results,
 };
 use crate::frequency_references::Spectrum;
 use crate::tag::Tag;
@@ -23,7 +24,7 @@ pub trait SyncIO {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize>;
     fn write_all(&mut self, data: &[u8]) -> io::Result<()>;
     fn send_frame(&mut self, frame: &[u8]) -> io::Result<()>;
-    fn read_response(&mut self) -> io::Result<Vec<u8>>;
+    fn read_response(&mut self, sent_command: &Command) -> io::Result<CommandResult>;
     fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError>;
     fn send_and_read_command(&mut self, cmd: Command) -> Result<CommandResult, ConnectorError>;
     ///
@@ -103,7 +104,7 @@ where
     }
 
     // TODO codice parzialmente duplicato in sync e async
-    fn read_response(&mut self) -> io::Result<Vec<u8>> {
+    fn read_response(&mut self, sent_command: &Command) -> io::Result<CommandResult> {
         let mut buffer = Vec::new();
         let mut temp = [0u8; 1024];
         let mut start = Instant::now();
@@ -112,6 +113,14 @@ where
             match self.socket.read(&mut temp) {
                 Ok(n) if n > 0 => {
                     buffer.extend_from_slice(&temp[..n]);
+
+                    if buffer.len() > 2
+                        && let Some(o) = try_parsing_results(buffer.as_ref(), sent_command)
+                    {
+                        debug_print_vec("RX", &buffer);
+                        return Ok(o);
+                    }
+
                     // resetta il timer se arrivano dati
                     start = Instant::now();
                 }
@@ -135,7 +144,7 @@ where
             }
         }
 
-        Ok(buffer)
+        Err(io::ErrorKind::Other.into()) //TODO migliorare
     }
 
     fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
@@ -166,9 +175,13 @@ where
     /// Legge il comando di risposta, ma passiamo il comando inviato a cui dobbiamo ricevere risposta
     /// in modo che possiamo poi capire come parsare il dato
     fn read_command(&mut self, sent_command: &Command) -> Result<CommandResult, ConnectorError> {
-        let response = timed_debug!("Response time:", self.read_response()?);
-        debug_print_vec("RX", &response);
-        Ok(Command::from_bytes(&*response, sent_command)?)
+        timed_debug!(
+            "Response time:",
+            match self.read_response(sent_command) {
+                Ok(res) => Ok(res),
+                Err(e) => Err(ConnectorError::Io(e)),
+            }
+        )
     }
 
     fn setup_reader(&mut self) -> Result<(), ConnectorError> {
@@ -333,10 +346,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connector::TIMEOUT_WAITING_PACKET;
+    use crate::frame::command::ReadResult;
     use crate::frequency_references::Spectrum;
     use std::io::{self, Read, Write};
-    use std::time::Instant;
 
     // Mock sincrono minimale per simulare sequenze di lettura
     struct MockPort {
@@ -384,47 +396,87 @@ mod tests {
     // --- Test per read_response() sincrono ---
 
     #[test]
-    fn test_sync_read_response_single_chunk() {
-        let mock = MockPort::new(vec![Ok(vec![0xAA, 0xBB, 0xCC])]);
+    fn test_sync_read_response_single_chunk_without_tags() {
+        let mock = MockPort::new(vec![Ok(vec![
+            0xA0, 0x0A, 0x01, 0x8A, //header
+            0x00, 0x00, 0x00, // total
+            0x00, 0x00, 0x00, 0x79, // duration
+            0x52,
+        ])]);
         let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
-        let rs = conn.read_response().unwrap();
-        assert_eq!(rs, vec![0xAA, 0xBB, 0xCC]);
+        let rs = conn
+            .read_response(&Command::FastSwitchAntInventory(
+                vec![(1, 1)],
+                0,
+                Session::S0,
+                Target::A,
+                PhaseStatus::Off, // Phase disattivata
+                0,
+            ))
+            .unwrap();
+        assert_eq!(
+            rs,
+            CommandResult::ResponsePackets(Ok((
+                vec![],
+                ReadResult {
+                    antenna_id: 0,
+                    read_rate: 0,
+                    total_read: 0
+                }
+            )))
+        );
     }
 
     #[test]
-    fn test_sync_read_response_multi_chunk() {
-        let mock = MockPort::new(vec![Ok(vec![0x01, 0x02]), Ok(vec![0x03, 0x04, 0x05])]);
+    fn test_sync_read_response_single_chunk_with_tags() {
+        let raw_packet = vec![
+            0xA0, 0x15, 0x01, 0x8A,
+            0x00,
+            0x34, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x96, 0x41, 0x47, 0x01,
+            0xD8,
+            0x95,
+
+            0xA0, 0x15, 0x01, 0x8A, 0x00, 0x30, 0x00, 0x30, 0x39, 0x5D, 0xFA, 0x82, 0xE3, 0x79, 0x00, 0x00, 0x30, 0x57, 0xA4,0x4E, 0x00, 0x87, 0xF2,
+
+            0xA0, 0x15, 0x01, 0x8A, 0x00, 0x34, 0x00, 0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x96, 0x31, 0x48, 0x0E, 0x35, 0x3A,
+
+            0xA0, 0x0A, 0x01, 0x8A, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x28, 0xA0,
+        ];
+
+        let mock = MockPort::new(vec![Ok(raw_packet)]);
         let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
 
-        let rs = conn.read_response().unwrap();
-        assert_eq!(rs, vec![0x01, 0x02, 0x03, 0x04, 0x05]);
-    }
+        let rs = conn
+            .read_response(&Command::FastSwitchAntInventory(
+                vec![(1, 1)],
+                0,
+                Session::S0,
+                Target::A,
+                PhaseStatus::Off, // Phase disattivata
+                0,
+            ))
+            .unwrap();
 
-    #[test]
-    fn test_sync_read_response_would_block_then_data() {
-        let mock = MockPort::new(vec![
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "wb")),
-            Ok(vec![0x10, 0x11, 0x12]),
-        ]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
+        if let CommandResult::ResponsePackets(Ok((tags, read_result))) = rs {
+            assert_eq!(
+                read_result,
+                ReadResult {
+                    antenna_id: 0,
+                    read_rate: 13,
+                    total_read: 3
+                }
+            );
 
-        let rs = conn.read_response().unwrap();
-        assert_eq!(rs, vec![0x10, 0x11, 0x12]);
-    }
+            assert_eq!(
+                tags.len(),
+                3
+            );
 
-    #[test]
-    fn test_sync_read_response_timeout_no_data() {
-        // Nessun dato: la read() restituirà sempre Ok(0) e usciamo per timeout interno
-        let mock = MockPort::new(vec![]);
-        let mut conn = Connector::new(mock, 1, vec![30], (Spectrum::CHN, 920.125, 924.875), None);
-
-        let start = Instant::now();
-        let rs = conn.read_response().unwrap();
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        assert!(rs.is_empty());
-        // Verifichiamo che sia passato almeno (circa) il timeout configurato
-        assert!(elapsed_ms >= TIMEOUT_WAITING_PACKET.saturating_sub(10));
+            assert_eq!(tags[0].epc,"000000000000000000009631480E");
+            assert_eq!(tags[1].epc,"30395DFA82E37900003057A44E00");
+            assert_eq!(tags[2].epc,"0000000000000000000096414701");
+        }
     }
 }

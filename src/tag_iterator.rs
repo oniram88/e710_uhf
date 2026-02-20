@@ -179,11 +179,12 @@ mod tests {
 
         let res1 = iterator.next().unwrap();
         assert!(res1.is_ok());
-        assert_eq!(res1.unwrap().epc, "E28069150000501D63E2A04F");
+        assert_eq!(res1.unwrap().epc, "E28069150000401D63E2A44F");
 
         let res2 = iterator.next().unwrap();
         assert!(res2.is_ok());
-        assert_eq!(res2.unwrap().epc, "E28069150000401D63E2A44F");
+        assert_eq!(res2.unwrap().epc, "E28069150000501D63E2A04F");
+
 
         assert!(iterator.next().is_none());
     }

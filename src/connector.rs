@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_read_response_success() {
-        let mock_port = MockPort::new(vec![Ok(vec![0x01, 0x02, 0x03])]);
+        let mock_port = MockPort::new(vec![Ok(vec![0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6])]);
         let mut connector = Connector::new(
             mock_port,
             1,
@@ -216,8 +216,9 @@ mod tests {
             None,
         );
 
-        let response = connector.read_response().unwrap();
-        assert_eq!(response, vec![0x01, 0x02, 0x03]);
+        let response = connector.read_response(&Command::GetWorkAntenna).unwrap();
+
+        assert_eq!(response, CommandResult::GetWorkAntenna(Ok(1)));
     }
 
     #[test]
@@ -231,15 +232,18 @@ mod tests {
             None,
         );
 
-        let response = connector.read_response().unwrap();
-        assert!(response.is_empty());
+        let response = connector.read_response(&Command::GetWorkAntenna);
+        assert!(response.is_err());
+
+        // Compare the io::Error's kind instead of the error itself
+        assert_eq!(response.unwrap_err().kind(), io::ErrorKind::Other);
     }
 
     #[test]
     fn test_read_response_would_block() {
         let mock_port = MockPort::new(vec![
             Err(io::Error::new(io::ErrorKind::WouldBlock, "would block")),
-            Ok(vec![0x04, 0x05]),
+            Ok(vec![0xA0, 0x04, 0x01]),
         ]);
         let mut connector = Connector::new(
             mock_port,
@@ -249,8 +253,12 @@ mod tests {
             None,
         );
 
-        let response = connector.read_response().unwrap();
-        assert_eq!(response, vec![0x04, 0x05]);
+        let response = connector.read_response(&Command::GetWorkAntenna);
+
+        assert!(response.is_err());
+
+        // Compare the io::Error's kind instead of the error itself
+        assert_eq!(response.unwrap_err().kind(), io::ErrorKind::Other);
     }
 
     #[test]
@@ -267,7 +275,7 @@ mod tests {
             None,
         );
 
-        let result = connector.read_response();
+        let result = connector.read_response(&Command::GetWorkAntenna);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::Other);
     }

@@ -103,6 +103,7 @@ impl Display for PhaseStatus {
 }
 
 #[derive(Clone, Debug)]
+#[derive(PartialEq)]
 pub enum Command {
     Reset,
     // SetUartBaudRate,
@@ -190,6 +191,7 @@ pub enum Command {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum CommandResult {
     Reset(Result<(), FrameError>),
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
@@ -511,10 +513,7 @@ impl SerializableCommand for Command {
     /// [3] -> Command byte.
     /// [4..] -> Data from the reader.
     /// [length + 2] -> Checksum. Check all the bytes except itself.
-    fn from_bytes(
-        raw: &[u8],
-        sent_command: &Command,
-    ) -> Result<CommandResult, FrameError> {
+    fn from_bytes(raw: &[u8], sent_command: &Command) -> Result<CommandResult, FrameError> {
         if raw.len() < 4 {
             return Err(FrameError::InvalidPacket(raw.to_vec()));
         }
@@ -677,24 +676,39 @@ fn try_split_in_base_frame_parts(raw: &[u8]) -> Option<(usize, u8, u8, Vec<u8>)>
     Some((length, raw_command, checksum, data))
 }
 
+fn try_split_in_base_frame_parts_with_checksum(
+    raw: &[u8],
+) -> Result<(usize, u8, u8, Vec<u8>), FrameError> {
+    if let Some((length, raw_command, checksum, data)) = try_split_in_base_frame_parts(raw) {
+        if checksum != calculate_checksum(&raw[0..(raw.len() - 1)]) {
+            Err(FrameError::InvalidChecksum)
+        } else {
+            Ok((length, raw_command, checksum, data.to_vec()))
+        }
+    } else {
+        Err(FrameError::InvalidPacket(raw.to_vec()))
+    }
+}
+
 fn parse_tag_response(
     raw_data: Vec<u8>,
     sent_command: &Command,
 ) -> Result<(Vec<Tag>, ReadResult), FrameError> {
     let mut tags: Vec<Tag> = Vec::new();
-    let mut result: ReadResult = ReadResult {
-        antenna_id: 0,
-        read_rate: 0,
-        total_read: 0,
-    };
+    let mut result: Option<ReadResult> = None;
 
-    let packets = split_packets(&raw_data);
+    let mut packets = split_packets(&raw_data);
+    packets.reverse();
 
     for frame in packets {
         // devo elaborare il pacchetto
-        let (length, _raw_command, checksum, data) = try_split_in_base_frame_parts(frame).unwrap();
-        if checksum != calculate_checksum(&frame[0..(frame.len() - 1)]) {
-            return Err(FrameError::InvalidChecksum);
+        let (length, _raw_command, _checksum, data) = try_split_in_base_frame_parts_with_checksum(frame)?;
+
+        // Il primo frame (cioè l'ultimo avendo fatto il reverse) deve essere il pacchetto dei risultati
+        // Quindi sappiamo esattamente quanto è lungo.
+        // Non devono essere stati ancora parsati i pacchetti degli RFID
+        if length != 0x0A && result.is_none() {
+            return Err(FrameError::TagParsingError(raw_data));
         }
 
         // Questo è il pacchetto con i totali finali
@@ -707,19 +721,19 @@ fn parse_tag_response(
                 } else {
                     0
                 };
-                result = ReadResult {
+                result = Some(ReadResult {
                     antenna_id: 0x00,
                     total_read,
                     read_rate,
-                }
+                })
             }
             (0x0A, &Command::CustomizeSessionTargetInventory(..)) => {
                 // Ultimo frame di check
-                result = ReadResult {
+                result = Some(ReadResult {
                     antenna_id: frame[4],
                     read_rate: u32::from_be_bytes([0x00, 0x00, frame[5], frame[6]]),
                     total_read: u32::from_be_bytes([frame[7], frame[8], frame[9], frame[10]]),
-                }
+                })
             }
             // In caso di fast switching questo è un errore, e la configurazione delle antenne non è
             // correttamente impostata
@@ -743,10 +757,23 @@ fn parse_tag_response(
         }
     }
 
-    Ok((tags, result))
+    Ok((tags, result.unwrap()))
+}
+
+/// Si occupa di controllare se abbiamo ricevuto tutti i byte per la comunicazione
+pub(crate) fn try_parsing_results(buf: &[u8], sent_command: &Command) -> Option<CommandResult> {
+    match Command::from_bytes(buf, sent_command) {
+        Ok(o) => match &o {
+            CommandResult::ResponsePackets(Ok(_)) => Some(o),
+            CommandResult::ResponsePackets(Err(_)) => None,
+            _ => Some(o),
+        },
+        _ => None,
+    }
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct ReadResult {
     pub antenna_id: u8,
     pub read_rate: u32,
@@ -1032,10 +1059,10 @@ mod tests {
         assert_eq!(result.1.read_rate, 90);
         assert_eq!(result.1.total_read, 4);
         assert_eq!(result.0.len(), 4);
-        assert_eq!(result.0[0].epc, "E28069150000501D63E2A04F".to_string());
-        assert_eq!(result.0[1].epc, "E28069150000401D63E2A44F".to_string());
-        assert_eq!(result.0[2].epc, "E28069150000501D63E29C4F".to_string());
-        assert_eq!(result.0[3].epc, "E28069150000401D63E3284F".to_string());
+        assert_eq!(result.0[3].epc, "E28069150000501D63E2A04F".to_string());
+        assert_eq!(result.0[2].epc, "E28069150000401D63E2A44F".to_string());
+        assert_eq!(result.0[1].epc, "E28069150000501D63E29C4F".to_string());
+        assert_eq!(result.0[0].epc, "E28069150000401D63E3284F".to_string());
     }
 
     #[test]
@@ -1077,11 +1104,11 @@ mod tests {
         assert_eq!(result.1.total_read, 5);
         assert_eq!(result.1.read_rate, 0x1C); // lo calcoliamo dividendo il tempo della durata con il numero totali di letture in ms
         assert_eq!(result.0.len(), 5);
-        assert_eq!(result.0[0].epc, "E28069150000501D63E29C4F".to_string());
-        assert_eq!(result.0[1].epc, "E28069150000401D63E3184F".to_string());
+        assert_eq!(result.0[4].epc, "E28069150000501D63E29C4F".to_string());
+        assert_eq!(result.0[3].epc, "E28069150000401D63E3184F".to_string());
         assert_eq!(result.0[2].epc, "E28069150000401D63E3284F".to_string());
-        assert_eq!(result.0[3].epc, "E28069150000501D63E2A04F".to_string());
-        assert_eq!(result.0[4].epc, "E28069150000401D63E2A44F".to_string());
+        assert_eq!(result.0[1].epc, "E28069150000501D63E2A04F".to_string());
+        assert_eq!(result.0[0].epc, "E28069150000401D63E2A44F".to_string());
     }
 
     #[test]
@@ -1112,9 +1139,9 @@ mod tests {
         assert_eq!(result.1.total_read, 3);
         assert_eq!(result.1.read_rate, 0x0D); // lo calcoliamo dividendo il tempo della durata con il numero totali di letture in ms
         assert_eq!(result.0.len(), 3);
-        assert_eq!(result.0[0].epc, "000000000000000000009641".to_string());
+        assert_eq!(result.0[2].epc, "000000000000000000009641".to_string());
         assert_eq!(result.0[1].epc, "30395DFA82E37900003057A4".to_string());
-        assert_eq!(result.0[2].epc, "000000000000000000009631".to_string());
+        assert_eq!(result.0[0].epc, "000000000000000000009631".to_string());
     }
 
     #[test]
