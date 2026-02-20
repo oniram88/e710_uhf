@@ -5,6 +5,8 @@ edition = "2024"
 exclude = ["docs/"]
 description = "A Rust library for interacting with E710 UHF RFID modules"
 license = "MIT"
+homepage = "https://github.com/oniram88/e710_uhf"
+repository = "https://github.com/oniram88/e710_uhf"
 
 [dependencies]
 log = "0.4.29"
