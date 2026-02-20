@@ -1,6 +1,5 @@
 #![cfg(feature = "async")]
 
-use std::time::Duration;
 use crate::connector::{AsyncIO, Connector, ConnectorError};
 use crate::frame::command::{Command, CommandResult};
 use crate::tag::Tag;
@@ -8,7 +7,6 @@ use async_stream::try_stream;
 use futures_core::stream::Stream;
 use log::{debug, error, warn,info};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::time::sleep;
 
 /// Restituisce uno Stream asincrono di `Tag` ottenuti eseguendo il `sent_command`.
 ///
