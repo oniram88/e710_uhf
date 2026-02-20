@@ -146,7 +146,7 @@ where
             }
         }
 
-        Err(io::ErrorKind::Other.into()) //TODO migliorare
+        Err(io::ErrorKind::Other.into())
     }
 
     fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
