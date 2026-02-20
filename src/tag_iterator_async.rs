@@ -33,7 +33,7 @@ where
                 debug!("Risposta ricevuta: {:?}", response);
                 match response {
                     CommandResult::ResponsePackets(Ok(setted_values)) => {
-                        info!("TAGS:{:?}", setted_values.0.len());
+                        debug!("TAGS received:{:?}", setted_values.0.len());
                         for tag in setted_values.0 {
                             yield tag;
                         }
