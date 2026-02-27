@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.3.1 - 2026-02-27
+#### Bug Fixes
+- Change info level for tags count - (cd5a0d0) - Marino Bonetti
+#### Documentation
+- Add Cargo.toml info - (0536fe3) - Marino Bonetti
+
+- - -
+
 ## 0.3.0 - 2026-02-20
 #### Features
 -  Split connector in Async e Sync capabilities with feature activation - (dfbfb06) - Marino Bonetti
