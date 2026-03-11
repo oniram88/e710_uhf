@@ -1,6 +1,7 @@
 use crate::frequency_references::get_frequency;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{DateTime, Utc};
 
 /// Rappresentazione di un tag
 #[derive(Debug, Clone)]
@@ -12,6 +13,7 @@ pub struct Tag {
     pub rssi: u8,
     pub phase: (u8, u8),
     pub received_at_ns: u64,
+    pub received_at_utc: DateTime<Utc>,
     pub antenna_choosing: Option<u8>, // When 0, take antenna 1/2/3/4; When 1, take antenna 5/6/7/8
 }
 
@@ -29,6 +31,7 @@ impl Tag {
             rssi,
             antenna_id,
             antenna_choosing,
+            received_at_utc: Utc::now(),
             received_at_ns: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
@@ -68,6 +71,7 @@ impl Tag {
             rssi,
             antenna_id,
             antenna_choosing,
+            received_at_utc: Utc::now(),
             received_at_ns: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")

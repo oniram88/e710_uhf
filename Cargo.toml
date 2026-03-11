@@ -10,6 +10,7 @@ repository = "https://github.com/oniram88/e710_uhf"
 
 [dependencies]
 log = "0.4.29"
+chrono = "0.4.44"
 
 # Dipendenze opzionali per async
 async-trait = { version = "0.1.89", optional = true }
