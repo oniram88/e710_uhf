@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.4.0 - 2026-03-11
+#### Features
+- Add utc timestamp to tag - (267db4b) - Marino Bonetti
+
+- - -
+
 ## 0.3.1 - 2026-02-27
 #### Bug Fixes
 - Change info level for tags count - (cd5a0d0) - Marino Bonetti

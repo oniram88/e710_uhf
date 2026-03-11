@@ -1,6 +1,6 @@
 [package]
 name = "e710_uhf"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 exclude = ["docs/"]
 description = "A Rust library for interacting with E710 UHF RFID modules"
