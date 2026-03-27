@@ -6,6 +6,7 @@ A Rust library for interacting with E710 UHF RFID modules. This crate provides a
 
 - **High-level API**: Easy to use `Connector` for managing the reader and its parameters.
 - **TCP/IP Support**: Built-in support for Ethernet-based readers using standard TCP streams.
+- **Serial Interface Support**: Support for direct serial communication with RS232-based readers.
 - **Comprehensive Command Set**:
     - Firmware version retrieval.
     - Antenna management (Set/Get work antenna, connection detection).
@@ -16,6 +17,7 @@ A Rust library for interacting with E710 UHF RFID modules. This crate provides a
     - Single antenna reading.
     - Fast switching antenna inventory for high-speed tag collection across multiple antennas.
 - **Iterator-based API**: Efficiently process tags as they arrive with a clean iterator interface.
+- **Async Support**: Asynchronous communication with the reader using `async-std`.
 
 ## Installation
 
@@ -23,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-e710_uhf = { git = "https://github.com/marinomancini/e710_uhf" } # Replace with actual repository URL if different
+e710_uhf = { version = "0.4.0", features = ["async"] }
 ```
 
 ## Quick Start
@@ -107,14 +109,6 @@ ping -c 1 192.168.0.178
 # Verify the MAC address is now present
 arp -n
 ```
-
-## Documentation
-
-The project includes extensive documentation and SDKs in the `docs/` directory:
-- **Serial Interface Protocol**: Detailed documentation of the M70x-Module protocol.
-- **TCP-IP Configuration**: Guides for network setup.
-- **SDKs**: Android, C#, and Java SDK samples.
-- **PC Demo Software**: C# based demo application for testing.
 
 ## License
 
