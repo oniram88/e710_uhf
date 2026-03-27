@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.4.1 - 2026-03-27
+#### Documentation
+- Update documentation - (d026b34) - Marino Bonetti
+
+- - -
+
 ## 0.4.0 - 2026-03-11
 #### Features
 - Add utc timestamp to tag - (267db4b) - Marino Bonetti
