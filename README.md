@@ -110,7 +110,40 @@ ping -c 1 192.168.0.178
 arp -n
 ```
 
+## Hardware-in-the-loop example
+
+The finite HIL example checks the reader firmware, current antenna, output
+power, frequency region, temperature, antenna detector and RF link profile. By
+default it only sends read-only commands and returns a non-zero exit code if a
+check fails.
+
+Checks that scan antenna ports, activate RF or send idempotent configuration
+writes are opt-in. When `--antenna` is combined with `--inventory`, the HIL uses
+the detected ports for a fast-switch inventory and restores the original work
+antenna after the scan:
+
+```shell
+# Synchronous HIL over RS-232
+cargo run --example hil -- rs232 /dev/ttyUSB0 \
+  --antenna --inventory --require-tag --write-checks
+
+# Asynchronous HIL over RS-232
+cargo run --example async_hil --features async -- rs232 /dev/ttyUSB0 \
+  --antenna --inventory --require-tag --write-checks
+```
+
+TCP is supported by both runners as well:
+
+```shell
+cargo run --example hil -- tcp 192.168.0.178:4001
+cargo run --example async_hil --features async -- tcp 192.168.0.178:4001
+```
+
+Run `cargo run --example hil -- --help` or
+`cargo run --example async_hil --features async -- --help` for all options.
+Compiling the examples does not require a reader; executing the HIL does require
+a reachable E710.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
