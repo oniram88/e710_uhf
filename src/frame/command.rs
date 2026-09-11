@@ -108,9 +108,14 @@ pub enum Command {
     // SetUartBaudRate,
     GetFirmwareVersion,
     // SetReaderAddress,
-    /// [SetWorkAntenna] Imposta la posizione dell'antenna di lavoro,
-    /// 0 index base => antenna 1, posizione 0
+    /// Imposta l'antenna di lavoro usando un indice zero-based.
+    ///
+    /// `0` identifica l'antenna 1 e `7` identifica l'antenna 8. Il valore viene
+    /// trasmesso sul wire senza conversioni.
     SetWorkAntenna(u8),
+    /// Richiede l'indice zero-based dell'antenna di lavoro.
+    ///
+    /// Anche la risposta usa `0` per l'antenna 1 e `7` per l'antenna 8.
     GetWorkAntenna,
     /// [SetOutputPower] Imposta la potenza di output delle antenne,
     /// con un solo valore andremo ad impostare su tutte le antenne la medesima potenza
@@ -194,7 +199,8 @@ pub enum CommandResult {
     Reset(Result<(), FrameError>),
     GetFirmwareVersion(Result<(u8, u8), FrameError>),
     SetWorkAntenna(Result<(), FrameError>),
-    GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
+    /// Indice zero-based dell'antenna di lavoro, uguale al valore ricevuto sul wire.
+    GetWorkAntenna(Result<u8, FrameError>),
     SetBeeperMode(Result<BeeperMode, FrameError>),
     GetReaderTemperature(Result<f64, FrameError>),
     SetOutputPower(Result<(), FrameError>),
@@ -485,15 +491,6 @@ fn require_payload_min_len(
     }
 }
 
-fn checked_work_antenna_position(raw_position: u8, data: &[u8]) -> Result<u8, FrameError> {
-    raw_position
-        .checked_add(1)
-        .ok_or_else(|| FrameError::InvalidResponsePayload {
-            expected: "a zero-based antenna position smaller than 255",
-            actual: data.to_vec(),
-        })
-}
-
 impl SerializableCommand for Command {
     ///
     /// Genera i bytes che identificano comando e dati nel caso di un comando con dati
@@ -652,9 +649,7 @@ impl SerializableCommand for Command {
                         0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
                         0x75 => {
                             require_payload_len(&data, 1, "one antenna-position byte")?;
-                            Ok(CommandResult::GetWorkAntenna(Ok(
-                                checked_work_antenna_position(data[0], &data)?,
-                            )))
+                            Ok(CommandResult::GetWorkAntenna(Ok(data[0])))
                         }
                         0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(data, |_| {
                             if let Command::SetBeeperMode(beeper_mode) = sent_command {
@@ -882,6 +877,10 @@ pub(crate) fn try_parsing_results(buf: &[u8], sent_command: &Command) -> Option<
 
 #[derive(Debug, PartialEq)]
 pub struct ReadResult {
+    /// Indice antenna zero-based per `CustomizeSessionTargetInventory`.
+    ///
+    /// Il footer aggregato di `FastSwitchAntInventory` non comunica l'antenna e
+    /// mantiene questo campo a `0`; in quel caso non va interpretato come antenna 1.
     pub antenna_id: u8,
     pub read_rate: u32,
     pub total_read: u32,
@@ -1028,6 +1027,7 @@ mod tests {
     const GET_FIRMWARE_VERSION_RESPONSE: &[u8] = &[0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1];
     const SET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x74, 0x10, 0xD7];
     const GET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
+    const GET_LAST_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x75, 0x07, 0xDF];
     const SET_OUTPUT_POWER_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x76, 0x10, 0xD5];
     const SET_OUTPUT_POWER_ERROR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x76, 0x25, 0xC0];
     const GET_OUTPUT_POWER_RESPONSE: &[u8] =
@@ -1087,6 +1087,20 @@ mod tests {
         assert_eq!(
             CommandResult::GetFrequencyRegion(Ok((Spectrum::ETSI, 865.0, 868.0))).to_string(),
             "Frequency Region [ETSI: 865 -> 868]"
+        );
+    }
+
+    #[test]
+    fn work_antenna_index_is_zero_based_on_api_and_wire() {
+        assert_eq!(Command::SetWorkAntenna(0).to_bytes(), Ok(vec![0x74, 0x00]));
+        assert_eq!(Command::SetWorkAntenna(7).to_bytes(), Ok(vec![0x74, 0x07]));
+        assert_eq!(
+            Command::from_bytes(GET_WORK_ANTENNA_RESPONSE, &Command::GetWorkAntenna),
+            Ok(CommandResult::GetWorkAntenna(Ok(0)))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_LAST_WORK_ANTENNA_RESPONSE, &Command::GetWorkAntenna),
+            Ok(CommandResult::GetWorkAntenna(Ok(7)))
         );
     }
 
@@ -1189,7 +1203,7 @@ mod tests {
         );
         assert_eq!(
             Command::from_bytes(GET_WORK_ANTENNA_RESPONSE, &Command::GetWorkAntenna),
-            Ok(CommandResult::GetWorkAntenna(Ok(1)))
+            Ok(CommandResult::GetWorkAntenna(Ok(0)))
         );
 
         assert_eq!(
@@ -1369,7 +1383,7 @@ mod tests {
         let result = Command::from_bytes(&*raw_packet, &Command::GetWorkAntenna).unwrap();
 
         if let CommandResult::GetWorkAntenna(Ok(pos)) = result {
-            assert_eq!(pos, 1);
+            assert_eq!(pos, 0);
         } else {
             panic!("Expected GetWorkAntenna(Ok), got {:?}", result);
         }

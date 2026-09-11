@@ -72,7 +72,7 @@ Il confine è però invertito rispetto a un design sans-I/O: sono i loop sync/as
     I due loop differiscono già nel trattamento di EOF, `WouldBlock` e timeout. Con un decoder incrementale condiviso gli adapter rimangono piccoli e la parità di comportamento diventa verificabile.
 
 16. **Alcune semantiche pubbliche sono ambigue.**
-    `SetWorkAntenna` accetta un indice zero-based, mentre `GetWorkAntenna` aggiunge uno; le frequenze sono `f64` confrontati per uguaglianza esatta; `Spectrum::CUSTOM` restituisce per ora `(0.0, 0.0)`. Il `Display` errato di `Reset` è stato corretto nella Fase 0; le altre scelte vanno fissate o documentate prima di stabilizzare la nuova API.
+    `SetWorkAntenna` e `GetWorkAntenna` ora usano entrambi indici zero-based; `Tag::antenna_index` espone lo stesso criterio per le letture RFID. Restano da sistemare le frequenze `f64` confrontate per uguaglianza esatta e `Spectrum::CUSTOM`, che restituisce per ora `(0.0, 0.0)`. Il `Display` errato di `Reset` è stato corretto nella Fase 0.
 
 17. **Qualità statica.**
     `cargo clippy --all-targets --all-features -- -D warnings` fallisce attualmente con 33 segnalazioni complessive. Molte sono cosmetiche, ma conviene avere Clippy verde come guardrail della migrazione.
@@ -159,7 +159,7 @@ impl ResponseDecoder {
 - [x] Aggiungere `CommandResult::SetOutputPower` e mappare `0x76` sulla variante corretta.
 - [x] Correggere il `Display` di `Reset` e le altre stringhe palesemente errate senza cambiare il wire format.
 - [x] Aggiungere test che dimostrino i panic attuali usando payload corti, error code ignoto, frequenza invalida e più di otto antenne; trasformarli poi in normali `Err`.
-- [ ] Documentare e testare la convenzione dell'antenna: scegliere zero-based sul wire e, preferibilmente, anche nell'API; in alternativa introdurre un newtype che renda esplicita la conversione.
+- [x] Documentare e testare la convenzione dell'antenna: scegliere zero-based sul wire e, preferibilmente, anche nell'API; in alternativa introdurre un newtype che renda esplicita la conversione.
 - [ ] Decidere il comportamento reale di `Spectrum::CUSTOM`; fino all'implementazione, restituire `UnsupportedResponse` anziché dati fittizi.
 
 **Criterio di uscita:** nessun input pubblico o byte ricevuto può provocare panic; tutte le fixture esistenti continuano a produrre gli stessi valori validi.

@@ -7,6 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone)]
 pub struct Tag {
     pub frequency: f64,
+    /// Porta antenna zero-based nel banco selezionato (`0..=3`).
+    ///
+    /// Per ottenere l'indice globale zero-based (`0..=7`) usare [`Tag::antenna_index`].
     pub antenna_id: u8,
     pub epc: String,
     pub pc: String,
@@ -14,7 +17,8 @@ pub struct Tag {
     pub phase: (u8, u8),
     pub received_at_ns: u64,
     pub received_at_utc: DateTime<Utc>,
-    pub antenna_choosing: Option<u8>, // When 0, take antenna 1/2/3/4; When 1, take antenna 5/6/7/8
+    /// Banco antenna: `0` per gli indici globali `0..=3`, `1` per `4..=7`.
+    pub antenna_choosing: Option<u8>,
 }
 
 #[derive(Debug)]
@@ -43,6 +47,14 @@ impl Display for TagParseError {
 impl std::error::Error for TagParseError {}
 
 impl Tag {
+    /// Restituisce l'indice antenna globale zero-based quando il banco è disponibile.
+    pub fn antenna_index(&self) -> Option<u8> {
+        match (self.antenna_id, self.antenna_choosing) {
+            (port @ 0..=3, Some(bank @ 0..=1)) => Some(port + bank * 4),
+            _ => None,
+        }
+    }
+
     pub(crate) fn from_raw_with_phase(raw: &[u8]) -> Result<Tag, TagParseError> {
         const MINIMUM_LENGTH: usize = 6;
         if raw.len() < MINIMUM_LENGTH {
@@ -167,6 +179,7 @@ mod tests {
         assert_eq!(tag.phase, (0x00, 0x32));
         assert_eq!(tag.rssi, 0x54);
         assert_eq!(tag.antenna_choosing, Some(0));
+        assert_eq!(tag.antenna_index(), Some(0));
     }
 
     #[test]
@@ -185,6 +198,7 @@ mod tests {
         assert_eq!(tag.phase, (0, 0));
         assert_eq!(tag.rssi, 0x46);
         assert_eq!(tag.antenna_choosing, Some(1));
+        assert_eq!(tag.antenna_index(), Some(7));
     }
 
     #[test]

@@ -218,7 +218,7 @@ mod tests {
 
         let response = connector.read_response(&Command::GetWorkAntenna).unwrap();
 
-        assert_eq!(response, CommandResult::GetWorkAntenna(Ok(1)));
+        assert_eq!(response, CommandResult::GetWorkAntenna(Ok(0)));
     }
 
     #[test]
