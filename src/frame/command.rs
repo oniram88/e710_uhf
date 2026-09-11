@@ -197,6 +197,7 @@ pub enum CommandResult {
     GetWorkAntenna(Result<u8, FrameError>), //posizione antenna
     SetBeeperMode(Result<BeeperMode, FrameError>),
     GetReaderTemperature(Result<f64, FrameError>),
+    SetOutputPower(Result<(), FrameError>),
     /// [GetOutputPower]
     /// Ritorna l'array della potenza di output delle antenne,
     /// nel caso di singolo risultato vuol dire che sono configurate
@@ -320,6 +321,12 @@ impl Display for CommandResult {
             CommandResult::GetReaderTemperature(Ok(tmp)) => write!(f, "Temperature [{tmp} °C]"),
             CommandResult::GetReaderTemperature(Err(err)) => {
                 write!(f, "Failed to get Temperature: {}", err)
+            }
+            CommandResult::SetOutputPower(Ok(())) => {
+                write!(f, "Output Power set successfully")
+            }
+            CommandResult::SetOutputPower(Err(err)) => {
+                write!(f, "Failed to set Output Power: {}", err)
             }
             CommandResult::GetOutputPower(Ok(v)) => write!(f, "Antenna output power {:#?}", v),
             CommandResult::GetOutputPower(Err(e)) => {
@@ -583,7 +590,7 @@ impl SerializableCommand for Command {
                                 Ok(data[1] as f64 * sign)
                             }
                         ))),
-                        0x76 => Ok(CommandResult::Reset(parse_response!(data))),
+                        0x76 => Ok(CommandResult::SetOutputPower(parse_response!(data))),
                         0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
                         0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
                             data
@@ -919,6 +926,7 @@ mod tests {
     const SET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x74, 0x10, 0xD7];
     const GET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
     const SET_OUTPUT_POWER_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x76, 0x10, 0xD5];
+    const SET_OUTPUT_POWER_ERROR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x76, 0x25, 0xC0];
     const GET_OUTPUT_POWER_RESPONSE: &[u8] =
         &[0xA0, 0x07, 0x01, 0x77, 0x14, 0x15, 0x16, 0x17, 0x8B];
     const SET_FREQUENCY_REGION_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x78, 0x10, 0xD3];
@@ -956,14 +964,21 @@ mod tests {
             Ok(CommandResult::GetWorkAntenna(Ok(1)))
         );
 
-        // Characterization of the current behavior. The next Phase 0 task changes this expected
-        // variant to SetOutputPower when that missing CommandResult variant is introduced.
         assert_eq!(
             Command::from_bytes(
                 SET_OUTPUT_POWER_RESPONSE,
                 &Command::SetOutputPower(vec![20]),
             ),
-            Ok(CommandResult::Reset(Ok(())))
+            Ok(CommandResult::SetOutputPower(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                SET_OUTPUT_POWER_ERROR_RESPONSE,
+                &Command::SetOutputPower(vec![20]),
+            ),
+            Ok(CommandResult::SetOutputPower(Err(
+                FrameError::FailedResponse(ErrorCode::SetOutputPowerError, vec![0x25]),
+            )))
         );
         assert_eq!(
             Command::from_bytes(GET_OUTPUT_POWER_RESPONSE, &Command::GetOutputPower),

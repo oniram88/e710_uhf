@@ -37,7 +37,7 @@ Il confine è però invertito rispetto a un design sans-I/O: sono i loop sync/as
 ### Priorità P1 — bug di protocollo e framing
 
 5. **La risposta a `SetOutputPower` ha il tipo sbagliato.**
-   Il comando `0x76` produce `CommandResult::Reset(...)`; nell'enum manca una variante `SetOutputPower`. Questo può nascondere un errore di configurazione e rompe il matching tipizzato del chiamante.
+   Il comando `0x76` produceva `CommandResult::Reset(...)`; nell'enum mancava una variante `SetOutputPower`. Questo poteva nascondere un errore di configurazione e rompere il matching tipizzato del chiamante. **Risolto nella Fase 0.**
 
 6. **Header e indirizzo non vengono validati.**
    `try_split_in_base_frame_parts` non verifica `FRAME_HEADER` e non espone/controlla l'indirizzo RS-485. Un frame con struttura compatibile può essere accettato anche se destinato a un altro reader.
@@ -156,7 +156,7 @@ impl ResponseDecoder {
 ### Fase 0 — congelare il comportamento e correggere i bug certi
 
 - [x] Aggiungere fixture/golden test per ogni comando supportato, sia encoding sia decoding.
-- [ ] Aggiungere `CommandResult::SetOutputPower` e mappare `0x76` sulla variante corretta.
+- [x] Aggiungere `CommandResult::SetOutputPower` e mappare `0x76` sulla variante corretta.
 - [ ] Correggere il `Display` di `Reset` e le altre stringhe palesemente errate senza cambiare il wire format.
 - [ ] Aggiungere test che dimostrino i panic attuali usando payload corti, error code ignoto, frequenza invalida e più di otto antenne; trasformarli poi in normali `Err`.
 - [ ] Documentare e testare la convenzione dell'antenna: scegliere zero-based sul wire e, preferibilmente, anche nell'API; in alternativa introdurre un newtype che renda esplicita la conversione.
