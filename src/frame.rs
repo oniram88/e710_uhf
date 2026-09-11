@@ -2,7 +2,7 @@ pub mod command;
 pub mod frame_error;
 
 use crate::frame::command::{Command, SerializableCommand};
-pub(crate) use crate::frame::frame_error::FrameError;
+pub use crate::frame::frame_error::FrameError;
 
 pub(crate) const FRAME_HEADER: u8 = 0xA0;
 const RS485_ADDRESS: u8 = 0x01;
@@ -12,10 +12,10 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(payload: &Command) -> Self {
-        Frame {
-            payload: payload.to_bytes(),
-        }
+    pub fn new(payload: &Command) -> Result<Self, FrameError> {
+        Ok(Frame {
+            payload: payload.to_bytes()?,
+        })
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -67,14 +67,14 @@ mod tests {
     #[test]
     fn test_frame_new() {
         let cmd = Command::GetFirmwareVersion;
-        let frame = Frame::new(&cmd);
+        let frame = Frame::new(&cmd).expect("valid command");
         assert_eq!(frame.payload, vec![0x72]);
     }
 
     #[test]
     fn test_frame_to_bytes() {
         let cmd = Command::GetFirmwareVersion;
-        let frame = Frame::new(&cmd);
+        let frame = Frame::new(&cmd).expect("valid command");
         let bytes = frame.to_bytes();
 
         // HEADER: A0

@@ -100,11 +100,11 @@ fn core_map_get_rf_port_return_loss(
     }
 }
 
-fn command_to_frame_bytes(cmd: &Command) -> Vec<u8> {
-    let frame = Frame::new(cmd);
+fn command_to_frame_bytes(cmd: &Command) -> Result<Vec<u8>, FrameError> {
+    let frame = Frame::new(cmd)?;
     let bytes = frame.to_bytes();
     debug_print_vec("TX", &bytes);
-    bytes
+    Ok(bytes)
 }
 
 fn debug_print_vec(placeholder: &str, response: &[u8]) {

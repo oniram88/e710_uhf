@@ -149,7 +149,7 @@ where
     }
 
     fn send_command(&mut self, cmd: &Command) -> Result<(), ConnectorError> {
-        self.send_frame(&*command_to_frame_bytes(cmd))?;
+        self.send_frame(&command_to_frame_bytes(cmd)?)?;
         Ok(())
     }
 

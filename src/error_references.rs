@@ -104,8 +104,8 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
-    pub fn from_hex(code: u8) -> Self {
-        match code {
+    pub fn from_hex(code: u8) -> Result<Self, u8> {
+        let error_code = match code {
             0x10 => ErrorCode::CommandSuccess,
             0x11 => ErrorCode::CommandFail,
             0x20 => ErrorCode::McuResetError,
@@ -148,7 +148,19 @@ impl ErrorCode {
             0x56 => ErrorCode::SpectrumRegulationError,
             0x57 => ErrorCode::OutputPowerTooLow,
             0xEE => ErrorCode::FailToGetRfPortReturnLoss,
-            _ => unreachable!("Invalid error code: {:02X}", code),
-        }
+            _ => return Err(code),
+        };
+
+        Ok(error_code)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_error_code_is_rejected_without_panicking() {
+        assert_eq!(ErrorCode::from_hex(0x99), Err(0x99));
     }
 }

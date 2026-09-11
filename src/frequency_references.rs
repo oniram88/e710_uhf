@@ -62,10 +62,31 @@
 |  				58(0x3A) 			 |  				927.50 MHz 			 |
 |  				59(0x3B) 			 |  				928.00 MHz 			 |
 */
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
-pub fn get_frequency(param: u8) -> f64 {
-    match param {
+#[derive(Clone, Debug, PartialEq)]
+pub enum FrequencyError {
+    InvalidParameter(u8),
+    UnsupportedFrequency(f64),
+}
+
+impl Display for FrequencyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FrequencyError::InvalidParameter(param) => {
+                write!(f, "Invalid frequency parameter: 0x{param:02X}")
+            }
+            FrequencyError::UnsupportedFrequency(frequency) => {
+                write!(f, "Unsupported frequency: {frequency} MHz")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FrequencyError {}
+
+pub fn get_frequency(param: u8) -> Result<f64, FrequencyError> {
+    let frequency = match param {
         0x00 => 865.00,
         0x01 => 865.50,
         0x02 => 866.00,
@@ -126,12 +147,14 @@ pub fn get_frequency(param: u8) -> f64 {
         0x39 => 927.00,
         0x3A => 927.50,
         0x3B => 928.00,
-        _ => panic!("Invalid frequency param"),
-    }
+        _ => return Err(FrequencyError::InvalidParameter(param)),
+    };
+
+    Ok(frequency)
 }
 
-pub fn get_param(frequency: f64) -> u8 {
-    match frequency {
+pub fn get_param(frequency: f64) -> Result<u8, FrequencyError> {
+    let param = match frequency {
         865.00 => 0x00,
         865.50 => 0x01,
         866.00 => 0x02,
@@ -192,8 +215,10 @@ pub fn get_param(frequency: f64) -> u8 {
         927.00 => 0x39,
         927.50 => 0x3A,
         928.00 => 0x3B,
-        _ => panic!("Invalid frequency param"),
-    }
+        _ => return Err(FrequencyError::UnsupportedFrequency(frequency)),
+    };
+
+    Ok(param)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -212,5 +237,22 @@ impl Display for Spectrum {
             Spectrum::CHN => write!(f, "CHN"),
             Spectrum::CUSTOM => write!(f, "CUSTOM"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_frequency_values_return_errors() {
+        assert_eq!(
+            get_frequency(0xFF),
+            Err(FrequencyError::InvalidParameter(0xFF))
+        );
+        assert_eq!(
+            get_param(866.25),
+            Err(FrequencyError::UnsupportedFrequency(866.25))
+        );
     }
 }

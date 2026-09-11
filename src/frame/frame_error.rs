@@ -1,10 +1,21 @@
 use crate::error_references::ErrorCode;
 use crate::frame::Command;
+use crate::frequency_references::FrequencyError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq)]
 pub enum FrameError {
     InvalidCommand(String),
+    InvalidResponsePayload {
+        expected: &'static str,
+        actual: Vec<u8>,
+    },
+    UnknownErrorCode(u8),
+    Frequency(FrequencyError),
+    TooManyAntennas {
+        actual: usize,
+        max: usize,
+    },
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
     IncompletePacket(Vec<u8>),
@@ -22,6 +33,18 @@ impl Display for FrameError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             FrameError::InvalidCommand(msg) => write!(f, "Invalid command: {}", msg),
+            FrameError::InvalidResponsePayload { expected, actual } => write!(
+                f,
+                "Invalid response payload: expected {expected}, got {:02X?}",
+                actual
+            ),
+            FrameError::UnknownErrorCode(code) => {
+                write!(f, "Unknown device error code: 0x{code:02X}")
+            }
+            FrameError::Frequency(err) => write!(f, "Frequency error: {err}"),
+            FrameError::TooManyAntennas { actual, max } => {
+                write!(f, "Too many antennas: got {actual}, maximum is {max}")
+            }
             FrameError::ResponseNotExpected(response) => {
                 write!(f, "Response not expected [RX] {:02X?}", response)
             }
@@ -61,6 +84,12 @@ impl Display for FrameError {
 }
 
 impl std::error::Error for FrameError {}
+
+impl From<FrequencyError> for FrameError {
+    fn from(err: FrequencyError) -> Self {
+        FrameError::Frequency(err)
+    }
+}
 
 #[cfg(test)]
 mod tests {

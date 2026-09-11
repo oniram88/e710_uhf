@@ -406,7 +406,7 @@ impl Display for CommandResult {
 pub(crate) trait SerializableCommand {
     /// Returns a tuple of bytes (command, parameters)
     /// Parameters may be empty if not present
-    fn to_bytes(&self) -> Vec<u8>;
+    fn to_bytes(&self) -> Result<Vec<u8>, FrameError>;
     fn from_bytes(raw: &[u8], sent_command: &Command) -> Result<CommandResult, FrameError>
     where
         Self: Sized;
@@ -414,38 +414,91 @@ pub(crate) trait SerializableCommand {
 
 macro_rules! parse_response {
     ($data:expr) => {
-        match ErrorCode::from_hex($data[0]) {
-            ErrorCode::CommandSuccess => Ok(()),
-            response_error => Err(FrameError::FailedResponse(response_error, $data)),
+        match $data.first().copied() {
+            Some(code) => match ErrorCode::from_hex(code) {
+                Ok(ErrorCode::CommandSuccess) => Ok(()),
+                Ok(response_error) => Err(FrameError::FailedResponse(response_error, $data)),
+                Err(unknown_code) => Err(FrameError::UnknownErrorCode(unknown_code)),
+            },
+            None => Err(FrameError::InvalidResponsePayload {
+                expected: "at least one status byte",
+                actual: $data,
+            }),
         }
     };
 
     ($data:expr, ($min:expr, $max:expr), $success_block:expr) => {
         #[allow(unused_comparisons)]
-        if $data[0] >= $min && $data[0] <= $max {
-            $success_block($data)
-        } else {
-            parse_response!($data, $success_block)
+        match $data.first().copied() {
+            Some(value) if value >= $min && value <= $max => $success_block($data),
+            Some(_) => parse_response!($data, $success_block),
+            None => Err(FrameError::InvalidResponsePayload {
+                expected: "at least one response byte",
+                actual: $data,
+            }),
         }
     };
 
     ($data:expr, $success_block:expr) => {
-        if $data.len() == 1 {
-            match ErrorCode::from_hex($data[0]) {
-                ErrorCode::CommandSuccess => $success_block($data),
-                response_error => Err(FrameError::FailedResponse(response_error, $data)),
-            }
-        } else {
-            $success_block($data)
+        match $data.len() {
+            0 => Err(FrameError::InvalidResponsePayload {
+                expected: "at least one response byte",
+                actual: $data,
+            }),
+            1 => match ErrorCode::from_hex($data[0]) {
+                Ok(ErrorCode::CommandSuccess) => $success_block($data),
+                Ok(response_error) => Err(FrameError::FailedResponse(response_error, $data)),
+                Err(unknown_code) => Err(FrameError::UnknownErrorCode(unknown_code)),
+            },
+            _ => $success_block($data),
         }
     };
+}
+
+fn require_payload_len(
+    data: &[u8],
+    expected_len: usize,
+    expected: &'static str,
+) -> Result<(), FrameError> {
+    if data.len() == expected_len {
+        Ok(())
+    } else {
+        Err(FrameError::InvalidResponsePayload {
+            expected,
+            actual: data.to_vec(),
+        })
+    }
+}
+
+fn require_payload_min_len(
+    data: &[u8],
+    minimum_len: usize,
+    expected: &'static str,
+) -> Result<(), FrameError> {
+    if data.len() >= minimum_len {
+        Ok(())
+    } else {
+        Err(FrameError::InvalidResponsePayload {
+            expected,
+            actual: data.to_vec(),
+        })
+    }
+}
+
+fn checked_work_antenna_position(raw_position: u8, data: &[u8]) -> Result<u8, FrameError> {
+    raw_position
+        .checked_add(1)
+        .ok_or_else(|| FrameError::InvalidResponsePayload {
+            expected: "a zero-based antenna position smaller than 255",
+            actual: data.to_vec(),
+        })
 }
 
 impl SerializableCommand for Command {
     ///
     /// Genera i bytes che identificano comando e dati nel caso di un comando con dati
-    fn to_bytes(&self) -> Vec<u8> {
-        match self {
+    fn to_bytes(&self) -> Result<Vec<u8>, FrameError> {
+        let bytes = match self {
             Command::Reset => vec![0x70],
             Command::SetWorkAntenna(index) => {
                 vec![0x74, *index]
@@ -463,8 +516,8 @@ impl SerializableCommand for Command {
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 let mut v = vec![0x78];
                 v.push(spectrum.clone() as u8);
-                v.push(get_param(*min));
-                v.push(get_param(*max));
+                v.push(get_param(*min)?);
+                v.push(get_param(*max)?);
                 v
             }
             Command::GetFrequencyRegion => vec![0x79],
@@ -477,40 +530,50 @@ impl SerializableCommand for Command {
             }
             Command::GetRfLinkProfile => vec![0x6A],
             Command::GetRfPortReturnLoss(reference_frequency) => {
-                vec![0x7E, get_param(*reference_frequency)]
+                vec![0x7E, get_param(*reference_frequency)?]
             }
             Command::CustomizeSessionTargetInventory(session, target, phase, repeat) => {
                 vec![
                     0x8B,
                     session.clone() as u8,
                     target.clone() as u8,
-                    0x00,                // SL a 0 Select Flag; range from: 00,01,02,03
-                    phase.clone() as u8, // Phase Value; 00 for turn it off; 01 for turn it on. [SE usiamo il parametro dobbiam parsare in modo diverso il risultato]
-                    repeat.clone(),
+                    0x00,
+                    phase.clone() as u8,
+                    *repeat,
                 ]
             }
             Command::FastSwitchAntInventory(antennas, interval, session, target, phase, repeat) => {
-                let mut v = vec![0x8A];
-
-                let flat: Vec<u8> = antennas.iter().flat_map(|(a, b)| [*a, *b]).collect();
-
-                v.extend(flat);
-
-                // complete remaining antennas spaces
-                for _ in 0..(8 - antennas.len()) {
-                    v.extend(vec![0x08, 0x00]); // Disabled antenna
+                const MAX_ANTENNAS: usize = 8;
+                if antennas.len() > MAX_ANTENNAS {
+                    return Err(FrameError::TooManyAntennas {
+                        actual: antennas.len(),
+                        max: MAX_ANTENNAS,
+                    });
                 }
 
-                v.push(interval.clone());
-                v.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00]); // Reserved bytes
+                let mut v = vec![0x8A];
+                v.extend(
+                    antennas
+                        .iter()
+                        .flat_map(|(antenna, stay)| [*antenna, *stay]),
+                );
+
+                for _ in antennas.len()..MAX_ANTENNAS {
+                    v.extend([0x08, 0x00]);
+                }
+
+                v.push(*interval);
+                v.extend([0x00, 0x00, 0x00, 0x00, 0x00]);
                 v.push(session.clone() as u8);
                 v.push(target.clone() as u8);
-                v.extend(vec![0x00, 0x00, 0x00]); // Reserved bytes
+                v.extend([0x00, 0x00, 0x00]);
                 v.push(phase.clone() as u8);
-                v.push(repeat.clone());
+                v.push(*repeat);
                 v
             }
-        }
+        };
+
+        Ok(bytes)
     }
 
     ///
@@ -527,7 +590,7 @@ impl SerializableCommand for Command {
         }
 
         if let Some((length, raw_command, checksum, data)) = try_split_in_base_frame_parts(raw) {
-            if raw_command != sent_command.to_bytes()[0] {
+            if raw_command != sent_command.to_bytes()?[0] {
                 return Err(FrameError::InvalidPacketOrder(
                     sent_command.clone(),
                     raw.to_vec(),
@@ -561,7 +624,10 @@ impl SerializableCommand for Command {
                         0x62 => Ok(CommandResult::SetAntConnectionDetector(parse_response!(
                             data
                         ))),
-                        0x63 => Ok(CommandResult::GetAntConnectionDetector(Ok(data[0]))),
+                        0x63 => {
+                            require_payload_len(&data, 1, "one detector-sensitivity byte")?;
+                            Ok(CommandResult::GetAntConnectionDetector(Ok(data[0])))
+                        }
                         0x69 => Ok(CommandResult::SetRfLinkProfile(parse_response!(data))),
                         0x6A => Ok(CommandResult::GetRfLinkProfile(parse_response!(
                             data,
@@ -576,9 +642,20 @@ impl SerializableCommand for Command {
                             }
                         ))),
                         0x70 => Ok(CommandResult::Reset(parse_response!(data))),
-                        0x72 => Ok(CommandResult::GetFirmwareVersion(Ok((data[0], data[1])))),
+                        0x72 => Ok(CommandResult::GetFirmwareVersion(parse_response!(
+                            data,
+                            |data: Vec<u8>| {
+                                require_payload_len(&data, 2, "two firmware-version bytes")?;
+                                Ok((data[0], data[1]))
+                            }
+                        ))),
                         0x74 => Ok(CommandResult::SetWorkAntenna(parse_response!(data))),
-                        0x75 => Ok(CommandResult::GetWorkAntenna(Ok(data[0] + 1))),
+                        0x75 => {
+                            require_payload_len(&data, 1, "one antenna-position byte")?;
+                            Ok(CommandResult::GetWorkAntenna(Ok(
+                                checked_work_antenna_position(data[0], &data)?,
+                            )))
+                        }
                         0x7A => Ok(CommandResult::SetBeeperMode(parse_response!(data, |_| {
                             if let Command::SetBeeperMode(beeper_mode) = sent_command {
                                 Ok(beeper_mode.clone())
@@ -589,38 +666,46 @@ impl SerializableCommand for Command {
                         0x7B => Ok(CommandResult::GetReaderTemperature(parse_response!(
                             data,
                             |data: Vec<u8>| {
+                                require_payload_len(
+                                    &data,
+                                    2,
+                                    "a sign byte and a temperature byte",
+                                )?;
                                 let sign: f64 = if data[0] == 0x00 { -1.0 } else { 1.0 };
                                 Ok(data[1] as f64 * sign)
                             }
                         ))),
                         0x76 => Ok(CommandResult::SetOutputPower(parse_response!(data))),
-                        0x77 => Ok(CommandResult::GetOutputPower(Ok(data))),
+                        0x77 => {
+                            require_payload_min_len(&data, 1, "at least one output-power byte")?;
+                            Ok(CommandResult::GetOutputPower(Ok(data)))
+                        }
                         0x78 => Ok(CommandResult::SetDefaultFrequencyRegion(parse_response!(
                             data
                         ))),
-                        0x79 => match data[0] {
-                            0x01 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                        0x79 => match data.first().copied() {
+                            Some(0x01) if length == 6 => Ok(CommandResult::GetFrequencyRegion(
                                 parse_response!(data, |data: Vec<u8>| Ok((
                                     Spectrum::FCC,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
+                                    get_frequency(data[1])?,
+                                    get_frequency(data[2])?
                                 ))),
                             )),
-                            0x02 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                            Some(0x02) if length == 6 => Ok(CommandResult::GetFrequencyRegion(
                                 parse_response!(data, |data: Vec<u8>| Ok((
                                     Spectrum::ETSI,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
+                                    get_frequency(data[1])?,
+                                    get_frequency(data[2])?
                                 ))),
                             )),
-                            0x03 if length == 6 => Ok(CommandResult::GetFrequencyRegion(
+                            Some(0x03) if length == 6 => Ok(CommandResult::GetFrequencyRegion(
                                 parse_response!(data, |data: Vec<u8>| Ok((
                                     Spectrum::CHN,
-                                    get_frequency(data[1]),
-                                    get_frequency(data[2])
+                                    get_frequency(data[1])?,
+                                    get_frequency(data[2])?
                                 ))),
                             )),
-                            0x04 if length == 9 => {
+                            Some(0x04) if length == 9 => {
                                 // todo!("Da completare la versione impostata dall'utente");
                                 Ok(CommandResult::GetFrequencyRegion(Ok((
                                     Spectrum::CUSTOM,
@@ -628,7 +713,11 @@ impl SerializableCommand for Command {
                                     0.0,
                                 ))))
                             }
-                            _ => Err(FrameError::ResponseNotExpected(raw.to_vec())),
+                            Some(_) => Err(FrameError::ResponseNotExpected(raw.to_vec())),
+                            None => Err(FrameError::InvalidResponsePayload {
+                                expected: "a frequency-region byte",
+                                actual: data,
+                            }),
                         },
                         0x7E => Ok(CommandResult::GetRfPortReturnLoss(parse_response!(
                             data,
@@ -724,7 +813,7 @@ fn parse_tag_response(
         match (length, sent_command) {
             (0x0A, &Command::FastSwitchAntInventory(..)) => {
                 let total_read = u32::from_be_bytes([0x00, data[0], data[1], data[2]]);
-                let duration = u32::from_be_bytes(data[3..7].try_into().unwrap());
+                let duration = u32::from_be_bytes([data[3], data[4], data[5], data[6]]);
                 let read_rate = if total_read > 0 {
                     duration / total_read
                 } else {
@@ -748,25 +837,35 @@ fn parse_tag_response(
             // correttamente impostata
             (0x05, &Command::FastSwitchAntInventory(ref a, ..)) => {
                 return Err(FrameError::FastSwitchingAntConfiguration(
-                    ErrorCode::from_hex(data[1]),
+                    ErrorCode::from_hex(data[1]).map_err(FrameError::UnknownErrorCode)?,
                     data[0],
                     a.clone(),
                 ));
             }
             // Situazione con tag da parsare
             (_, &Command::FastSwitchAntInventory(_, _, _, _, PhaseStatus::Off, _)) => {
-                tags.push(Tag::from_raw(&data));
+                tags.push(
+                    Tag::from_raw(&data)
+                        .map_err(|_| FrameError::TagParsingError(raw_data.clone()))?,
+                );
             }
             (_, &Command::FastSwitchAntInventory(_, _, _, _, PhaseStatus::On, _)) => {
-                tags.push(Tag::from_raw_with_phase(&data));
+                tags.push(
+                    Tag::from_raw_with_phase(&data)
+                        .map_err(|_| FrameError::TagParsingError(raw_data.clone()))?,
+                );
             }
             _ => {
-                tags.push(Tag::from_raw(&data));
+                tags.push(
+                    Tag::from_raw(&data)
+                        .map_err(|_| FrameError::TagParsingError(raw_data.clone()))?,
+                );
             }
         }
     }
 
-    Ok((tags, result.unwrap()))
+    let result = result.ok_or_else(|| FrameError::TagParsingError(raw_data))?;
+    Ok((tags, result))
 }
 
 /// Si occupa di controllare se abbiamo ricevuto tutti i byte per la comunicazione
@@ -823,6 +922,7 @@ pub fn split_packets(buf: &[u8]) -> Vec<&[u8]> {
 mod tests {
     use super::*;
     use crate::frame::Frame;
+    use crate::frequency_references::FrequencyError;
     use paste::paste;
 
     macro_rules! test_command_to_bytes {
@@ -831,7 +931,7 @@ mod tests {
                 #[test]
                 fn [<test_command_to_bytes_ $name>]() {
                     let cmd = $input;
-                    let result = cmd.to_bytes();
+                    let result = cmd.to_bytes().expect("valid command should serialize");
                     assert_eq!(result, $expected);
                 }
             }
@@ -947,6 +1047,11 @@ mod tests {
     const FAST_SWITCH_INVENTORY_EMPTY_RESPONSE: &[u8] = &[
         0xA0, 0x0A, 0x01, 0x8A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79, 0x52,
     ];
+    const SHORT_FIRMWARE_RESPONSE: &[u8] = &[0xA0, 0x03, 0x01, 0x72, 0xEA];
+    const SHORT_TEMPERATURE_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x7B, 0x10, 0xD0];
+    const UNKNOWN_RESET_ERROR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x70, 0x99, 0x52];
+    const INVALID_FREQUENCY_REGION_RESPONSE: &[u8] =
+        &[0xA0, 0x06, 0x01, 0x79, 0x01, 0xFF, 0x3B, 0xA5];
 
     #[test]
     fn test_command_display_uses_unambiguous_labels() {
@@ -983,6 +1088,89 @@ mod tests {
             CommandResult::GetFrequencyRegion(Ok((Spectrum::ETSI, 865.0, 868.0))).to_string(),
             "Frequency Region [ETSI: 865 -> 868]"
         );
+    }
+
+    #[test]
+    fn short_response_payloads_return_errors_without_panicking() {
+        assert_eq!(
+            Command::from_bytes(SHORT_FIRMWARE_RESPONSE, &Command::GetFirmwareVersion),
+            Ok(CommandResult::GetFirmwareVersion(Err(
+                FrameError::InvalidResponsePayload {
+                    expected: "at least one response byte",
+                    actual: vec![],
+                },
+            )))
+        );
+        assert_eq!(
+            Command::from_bytes(SHORT_TEMPERATURE_RESPONSE, &Command::GetReaderTemperature,),
+            Ok(CommandResult::GetReaderTemperature(Err(
+                FrameError::InvalidResponsePayload {
+                    expected: "a sign byte and a temperature byte",
+                    actual: vec![0x10],
+                },
+            )))
+        );
+
+        let mut short_tag_response = vec![0xA0, 0x05, 0x01, 0x8B, 0x00, 0x00, 0xCF];
+        short_tag_response.extend_from_slice(CUSTOMIZE_INVENTORY_EMPTY_RESPONSE);
+        let command =
+            Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
+        assert!(matches!(
+            Command::from_bytes(&short_tag_response, &command),
+            Ok(CommandResult::ResponsePackets(Err(
+                FrameError::TagParsingError(_)
+            )))
+        ));
+    }
+
+    #[test]
+    fn unknown_device_error_code_returns_error_without_panicking() {
+        assert_eq!(
+            Command::from_bytes(UNKNOWN_RESET_ERROR_RESPONSE, &Command::Reset),
+            Ok(CommandResult::Reset(Err(FrameError::UnknownErrorCode(
+                0x99,
+            ))))
+        );
+    }
+
+    #[test]
+    fn invalid_frequency_returns_error_without_panicking() {
+        assert_eq!(
+            Command::GetRfPortReturnLoss(866.25).to_bytes(),
+            Err(FrameError::Frequency(FrequencyError::UnsupportedFrequency(
+                866.25
+            ),))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                INVALID_FREQUENCY_REGION_RESPONSE,
+                &Command::GetFrequencyRegion,
+            ),
+            Ok(CommandResult::GetFrequencyRegion(Err(
+                FrameError::Frequency(FrequencyError::InvalidParameter(0xFF)),
+            )))
+        );
+    }
+
+    #[test]
+    fn fast_switch_inventory_rejects_more_than_eight_antennas() {
+        let command = Command::FastSwitchAntInventory(
+            vec![(0, 1); 9],
+            0,
+            Session::S0,
+            Target::A,
+            PhaseStatus::Off,
+            1,
+        );
+
+        assert_eq!(
+            command.to_bytes(),
+            Err(FrameError::TooManyAntennas { actual: 9, max: 8 })
+        );
+        assert!(matches!(
+            Frame::new(&command),
+            Err(FrameError::TooManyAntennas { actual: 9, max: 8 })
+        ));
     }
 
     #[test]
@@ -1456,7 +1644,9 @@ mod tests {
 
     #[test]
     fn test_try_split_in_base_frame_parts_valid_packet() {
-        let frame = Frame::new(&Command::SetWorkAntenna(1)).to_bytes();
+        let frame = Frame::new(&Command::SetWorkAntenna(1))
+            .expect("valid command")
+            .to_bytes();
         let (length, raw_command, checksum, data) =
             try_split_in_base_frame_parts(&frame).expect("expected valid frame split");
 
@@ -1468,7 +1658,9 @@ mod tests {
 
     #[test]
     fn test_try_split_in_base_frame_parts_with_trailing_bytes() {
-        let mut frame = Frame::new(&Command::GetFirmwareVersion).to_bytes();
+        let mut frame = Frame::new(&Command::GetFirmwareVersion)
+            .expect("valid command")
+            .to_bytes();
         frame.extend([0xFF, 0xEE]);
 
         let (length, raw_command, checksum, data) =

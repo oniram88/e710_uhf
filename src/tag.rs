@@ -1,4 +1,4 @@
-use crate::frequency_references::get_frequency;
+use crate::frequency_references::{FrequencyError, get_frequency};
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,14 +17,47 @@ pub struct Tag {
     pub antenna_choosing: Option<u8>, // When 0, take antenna 1/2/3/4; When 1, take antenna 5/6/7/8
 }
 
+#[derive(Debug)]
+pub(crate) enum TagParseError {
+    InvalidLength { actual: usize, minimum: usize },
+    Frequency(FrequencyError),
+}
+
+impl From<FrequencyError> for TagParseError {
+    fn from(err: FrequencyError) -> Self {
+        TagParseError::Frequency(err)
+    }
+}
+
+impl Display for TagParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagParseError::InvalidLength { actual, minimum } => {
+                write!(f, "Invalid tag length: got {actual}, minimum is {minimum}")
+            }
+            TagParseError::Frequency(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for TagParseError {}
+
 impl Tag {
-    pub(crate) fn from_raw_with_phase(raw: &[u8]) -> Tag {
+    pub(crate) fn from_raw_with_phase(raw: &[u8]) -> Result<Tag, TagParseError> {
+        const MINIMUM_LENGTH: usize = 6;
+        if raw.len() < MINIMUM_LENGTH {
+            return Err(TagParseError::InvalidLength {
+                actual: raw.len(),
+                minimum: MINIMUM_LENGTH,
+            });
+        }
+
         let (antenna_id, frequency) = Self::extract_fre_ant_id(&raw[0]);
 
         let (rssi, antenna_choosing) = Self::extract_rssi_choosing_antenna(&raw[raw.len() - 3]);
 
-        Self {
-            frequency: get_frequency(frequency),
+        Ok(Self {
+            frequency: get_frequency(frequency)?,
             pc: bytes_to_hex_upper(&raw[1..3].to_vec()),
             epc: bytes_to_hex_upper(&raw[3..raw.len() - 3]),
             phase: (raw[raw.len() - 2], raw[raw.len() - 1]),
@@ -36,7 +69,7 @@ impl Tag {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_nanos() as u64,
-        }
+        })
     }
 
     fn extract_fre_ant_id(freq_ant_byte: &u8) -> (u8, u8) {
@@ -59,12 +92,20 @@ impl Tag {
         (rssi, antenna_choosing)
     }
 
-    pub(crate) fn from_raw(raw: &[u8]) -> Tag {
+    pub(crate) fn from_raw(raw: &[u8]) -> Result<Tag, TagParseError> {
+        const MINIMUM_LENGTH: usize = 4;
+        if raw.len() < MINIMUM_LENGTH {
+            return Err(TagParseError::InvalidLength {
+                actual: raw.len(),
+                minimum: MINIMUM_LENGTH,
+            });
+        }
+
         let (antenna_id, frequency) = Self::extract_fre_ant_id(&raw[0]);
         let (rssi, antenna_choosing) = Self::extract_rssi_choosing_antenna(&raw[raw.len() - 1]);
 
-        Self {
-            frequency: get_frequency(frequency),
+        Ok(Self {
+            frequency: get_frequency(frequency)?,
             pc: bytes_to_hex_upper(&raw[1..3].to_vec()),
             epc: bytes_to_hex_upper(&raw[3..raw.len() - 1]),
             phase: (0, 0),
@@ -76,7 +117,7 @@ impl Tag {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_nanos() as u64,
-        }
+        })
     }
 }
 
@@ -107,7 +148,7 @@ impl Display for Tag {
 
 #[cfg(test)]
 mod tests {
-    use crate::tag::Tag;
+    use crate::tag::{Tag, TagParseError};
 
     #[test]
     fn check_from_raw_with_phase() {
@@ -118,7 +159,7 @@ mod tests {
             0x54, // RSSI 01010100
             0x00, 0x32, // Phase
         ];
-        let tag = Tag::from_raw_with_phase(&*raw);
+        let tag = Tag::from_raw_with_phase(&raw).expect("valid tag with phase");
         assert_eq!(tag.frequency, 865.0);
         assert_eq!(tag.antenna_id, 0);
         assert_eq!(tag.pc, "3000");
@@ -136,7 +177,7 @@ mod tests {
             0xE2, 0x80, 0x69, 0x15, 0x00, 0x00, 0x40, 0x1D, 0x63, 0xE3, 0x28, 0x4F, // EPC
             0xC6,
         ];
-        let tag = Tag::from_raw(&*raw);
+        let tag = Tag::from_raw(&raw).expect("valid tag");
         assert_eq!(tag.frequency, 867.0);
         assert_eq!(tag.antenna_id, 3);
         assert_eq!(tag.pc, "3000");
@@ -160,5 +201,23 @@ mod tests {
         let (_rssi, _antenna_choosing) = Tag::extract_rssi_choosing_antenna(&0x00);
         assert_eq!(_rssi, 0x00);
         assert_eq!(_antenna_choosing, None);
+    }
+
+    #[test]
+    fn short_tag_payloads_return_errors() {
+        assert!(matches!(
+            Tag::from_raw(&[0x00, 0x30]),
+            Err(TagParseError::InvalidLength {
+                actual: 2,
+                minimum: 4,
+            })
+        ));
+        assert!(matches!(
+            Tag::from_raw_with_phase(&[0x00, 0x30, 0x00, 0x40]),
+            Err(TagParseError::InvalidLength {
+                actual: 4,
+                minimum: 6,
+            })
+        ));
     }
 }

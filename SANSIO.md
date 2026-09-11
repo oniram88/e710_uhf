@@ -26,13 +26,13 @@ Il confine è però invertito rispetto a un design sans-I/O: sono i loop sync/as
    `try_parsing_results` restituisce `None` per ogni `Err` di `Command::from_bytes`. Un checksum errato, un comando diverso da quello atteso o un payload malformato fanno quindi continuare la lettura fino al timeout. Di conseguenza, il ramo di retry per `InvalidPacketOrder` nei connector è di fatto irraggiungibile attraverso il normale percorso di lettura.
 
 2. **Il parser può andare in panic con byte ricevuti dal dispositivo.**
-   `parse_response!`, i decoder di firmware/temperatura/frequenza, `parse_tag_response` e `Tag::from_raw*` indicizzano slice senza verificarne la lunghezza. Sono inoltre presenti `unwrap()` sul footer inventario e su `result`. Un frame formalmente completo ma con payload corto può terminare il processo.
+   `parse_response!`, i decoder di firmware/temperatura/frequenza, `parse_tag_response` e `Tag::from_raw*` indicizzavano slice senza verificarne la lunghezza. Erano inoltre presenti `unwrap()` sul footer inventario e su `result`. Un frame formalmente completo ma con payload corto poteva terminare il processo. **Risolto nella Fase 0 per i percorsi raggiungibili da dati del protocollo.**
 
 3. **Codici e frequenze sconosciuti causano panic.**
-   `ErrorCode::from_hex` usa `unreachable!` per byte sconosciuti; `get_frequency` e `get_param` usano `panic!`. Sono dati provenienti rispettivamente dal wire e dall'API pubblica e devono produrre errori tipizzati.
+   `ErrorCode::from_hex` usava `unreachable!` per byte sconosciuti; `get_frequency` e `get_param` usavano `panic!`. Ora restituiscono errori tipizzati. **Risolto nella Fase 0.**
 
 4. **`FastSwitchAntInventory` con più di otto antenne può andare in panic.**
-   L'espressione `8 - antennas.len()` va in underflow. Mancano anche controlli sugli ID antenna, potenza, range di frequenza e altri parametri del comando.
+   L'espressione `8 - antennas.len()` andava in underflow. Il limite di otto antenne ora produce `FrameError::TooManyAntennas`; i restanti controlli su ID antenna, potenza e altri parametri rimangono nella Fase 1. **Panic risolto nella Fase 0.**
 
 ### Priorità P1 — bug di protocollo e framing
 
@@ -158,7 +158,7 @@ impl ResponseDecoder {
 - [x] Aggiungere fixture/golden test per ogni comando supportato, sia encoding sia decoding.
 - [x] Aggiungere `CommandResult::SetOutputPower` e mappare `0x76` sulla variante corretta.
 - [x] Correggere il `Display` di `Reset` e le altre stringhe palesemente errate senza cambiare il wire format.
-- [ ] Aggiungere test che dimostrino i panic attuali usando payload corti, error code ignoto, frequenza invalida e più di otto antenne; trasformarli poi in normali `Err`.
+- [x] Aggiungere test che dimostrino i panic attuali usando payload corti, error code ignoto, frequenza invalida e più di otto antenne; trasformarli poi in normali `Err`.
 - [ ] Documentare e testare la convenzione dell'antenna: scegliere zero-based sul wire e, preferibilmente, anche nell'API; in alternativa introdurre un newtype che renda esplicita la conversione.
 - [ ] Decidere il comportamento reale di `Spectrum::CUSTOM`; fino all'implementazione, restituire `UnsupportedResponse` anziché dati fittizi.
 
