@@ -34,7 +34,7 @@ futures-util = "0.3"
 ## Tokio serve per compilare/girare gli esempi async che usano #[tokio::main]
 ## Qui abilitiamo le feature necessarie al runtime e alle macro, senza
 ## richiedere l'attivazione della feature opzionale della libreria.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "net", "sync"] }
 
 
 

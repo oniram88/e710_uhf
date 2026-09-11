@@ -3,6 +3,8 @@
 //! Examples:
 //!   cargo run --example async_hil --features async -- rs232 /dev/ttyUSB0
 //!   cargo run --example async_hil --features async -- tcp 192.168.0.178:4001 --antenna
+//!   cargo run --example async_hil --features async -- rs232 /dev/ttyUSB0
+//!     --antenna --inventory --duration-secs 120 --output inventory.csv
 
 #[cfg(not(feature = "async"))]
 compile_error!("the async_hil example requires `--features async`");
@@ -11,6 +13,8 @@ compile_error!("the async_hil example requires `--features async`");
 mod hil;
 #[path = "lib/hil_args.rs"]
 mod hil_args;
+#[path = "lib/hil_continuous.rs"]
+mod hil_continuous;
 
 use hil_args::{Endpoint, parse_args, usage};
 use std::env;
@@ -26,7 +30,7 @@ async fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match parse_args(args) {
+    match parse_args(args, true) {
         Ok(config) => match execute(config).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

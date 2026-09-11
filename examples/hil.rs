@@ -9,6 +9,9 @@
 mod hil;
 #[path = "lib/hil_args.rs"]
 mod hil_args;
+#[cfg(feature = "async")]
+#[path = "lib/hil_continuous.rs"]
+mod hil_continuous;
 
 use hil_args::{Endpoint, parse_args, usage};
 use serialport::{DataBits, FlowControl, Parity, StopBits};
@@ -23,7 +26,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match parse_args(args) {
+    match parse_args(args, false) {
         Ok(config) => match execute(config) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

@@ -129,8 +129,26 @@ cargo run --example hil -- rs232 /dev/ttyUSB0 \
 
 # Asynchronous HIL over RS-232
 cargo run --example async_hil --features async -- rs232 /dev/ttyUSB0 \
-  --antenna --inventory --require-tag --write-checks
+  --antenna --inventory --require-tag --write-checks \
+  --duration-secs 120 --output async_hil_inventory.csv
 ```
+
+In the async HIL, `--inventory` runs continuously for 120 seconds by default.
+Use `--duration-secs` to change the duration, `--output` to choose the CSV file,
+and `--buffer-capacity` to configure the bounded channel between the inventory
+task and the dedicated file-writer thread:
+
+```shell
+cargo run --example async_hil --features async -- rs232 /dev/ttyUSB0 \
+  --antenna --inventory --duration-secs 30 \
+  --output async_hil_inventory.csv --buffer-capacity 256
+```
+
+The console reports every completed cycle with tag count, inventory I/O time,
+buffer wait, time since the previous repetition, idle gap and total cycle time.
+The CSV stores the same timings and one row for every observed tag; cycles with
+no tags or protocol errors are retained as rows as well. This makes gaps between
+inventory rounds and writer backpressure directly measurable.
 
 TCP is supported by both runners as well:
 

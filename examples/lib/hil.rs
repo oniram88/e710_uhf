@@ -9,6 +9,7 @@ use e710_uhf::frame::command::{
 use e710_uhf::frequency_references::Spectrum;
 use std::fmt::Display;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::time::Duration;
 
 const MAX_ANTENNA_INDEX: u8 = 7;
@@ -22,6 +23,9 @@ pub struct HilOptions {
     pub require_tag: bool,
     pub write_checks: bool,
     pub fallback_reference_mhz: f64,
+    pub inventory_duration: Duration,
+    pub inventory_output: Option<PathBuf>,
+    pub buffer_capacity: usize,
 }
 
 impl Default for HilOptions {
@@ -33,6 +37,9 @@ impl Default for HilOptions {
             require_tag: false,
             write_checks: false,
             fallback_reference_mhz: 866.0,
+            inventory_duration: Duration::from_secs(120),
+            inventory_output: None,
+            buffer_capacity: 256,
         }
     }
 }
@@ -56,17 +63,17 @@ impl HilReport {
         );
     }
 
-    fn pass(&mut self, name: &str, detail: impl Display) {
+    pub(crate) fn pass(&mut self, name: &str, detail: impl Display) {
         self.passed += 1;
         println!("[PASS] {name}: {detail}");
     }
 
-    fn fail(&mut self, name: &str, detail: impl Display) {
+    pub(crate) fn fail(&mut self, name: &str, detail: impl Display) {
         self.failed += 1;
         eprintln!("[FAIL] {name}: {detail}");
     }
 
-    fn skip(&mut self, name: &str, reason: impl Display) {
+    pub(crate) fn skip(&mut self, name: &str, reason: impl Display) {
         self.skipped += 1;
         println!("[SKIP] {name}: {reason}");
     }
@@ -240,7 +247,7 @@ where
         let inventory_command = match connected_antennas.as_ref() {
             Some(antennas) if antennas.is_empty() => {
                 report.skip(
-                    "single inventory round",
+                    "continuous inventory",
                     "antenna scan found no connected ports",
                 );
                 return report;
@@ -264,34 +271,46 @@ where
             ),
         };
 
-        check_async(
-            &mut connector,
-            &mut report,
-            "single inventory round",
-            inventory_command,
-            |response| match response {
-                CommandResult::ResponsePackets(Ok((tags, result)))
-                    if !options.require_tag || !tags.is_empty() =>
-                {
-                    let count = tags.len();
-                    Ok((
-                        count,
-                        format!(
-                            "{count} tag(s), total_read={}, read_rate={}",
-                            result.total_read, result.read_rate
-                        ),
-                    ))
-                }
-                CommandResult::ResponsePackets(Ok((_tags, _result))) => {
-                    Err("no tag detected; --require-tag requires at least one".to_owned())
-                }
-                CommandResult::ResponsePackets(Err(error)) => Err(error.to_string()),
-                other => Err(unexpected_response(&other)),
-            },
-        )
-        .await;
+        match crate::hil_continuous::run(&mut connector, inventory_command, options).await {
+            Ok(summary)
+                if summary.failed_cycles == 0
+                    && (!options.require_tag || summary.total_tags > 0) =>
+            {
+                report.pass(
+                    "continuous inventory",
+                    format!(
+                        "{} cycle(s), {} tag observation(s), output {}",
+                        summary.cycles,
+                        summary.total_tags,
+                        summary.output.display()
+                    ),
+                );
+            }
+            Ok(summary) if options.require_tag && summary.total_tags == 0 => {
+                report.fail(
+                    "continuous inventory",
+                    format!(
+                        "no tags detected in {} cycle(s); data written to {}",
+                        summary.cycles,
+                        summary.output.display()
+                    ),
+                );
+            }
+            Ok(summary) => {
+                report.fail(
+                    "continuous inventory",
+                    format!(
+                        "{} of {} cycles failed; data written to {}",
+                        summary.failed_cycles,
+                        summary.cycles,
+                        summary.output.display()
+                    ),
+                );
+            }
+            Err(error) => report.fail("continuous inventory", error),
+        }
     } else {
-        report.skip("single inventory round", "enable with --inventory");
+        report.skip("continuous inventory", "enable with --inventory");
     }
 
     report
