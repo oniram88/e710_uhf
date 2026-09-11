@@ -242,38 +242,38 @@ impl Display for Command {
         match self {
             Command::Reset => write!(f, "Reset"),
             Command::SetWorkAntenna(pos) => write!(f, "Set Work Antenna to {}", pos),
-            Command::GetWorkAntenna => write!(f, "Work Antenna"),
-            Command::GetFirmwareVersion => write!(f, "Firmware Version"),
+            Command::GetWorkAntenna => write!(f, "Get Work Antenna"),
+            Command::GetFirmwareVersion => write!(f, "Get Firmware Version"),
             Command::SetBeeperMode(mode) => write!(f, "Set Beeper Mode to {:?}", mode),
-            Command::GetReaderTemperature => write!(f, "Temperature"),
+            Command::GetReaderTemperature => write!(f, "Get Reader Temperature"),
             Command::SetOutputPower(v) => {
                 if v.len() == 1 {
-                    write!(f, "Set Output power globaly to {}", v[0])
+                    write!(f, "Set Output Power globally to {}", v[0])
                 } else {
-                    write!(f, "Set Output power for single antenna to {:?}", v)
+                    write!(f, "Set Output Power per antenna to {:?}", v)
                 }
             }
-            Command::GetOutputPower => write!(f, "Output Power"),
+            Command::GetOutputPower => write!(f, "Get Output Power"),
             Command::SetDefaultFrequencyRegion(spectrum, min, max) => {
                 write!(f, "Set {spectrum} Frequency Region [{min} -> {max}]")
             }
-            Command::GetFrequencyRegion => write!(f, "Frequency Region"),
+            Command::GetFrequencyRegion => write!(f, "Get Frequency Region"),
             Command::SetAntConnectionDetector(v) => {
                 write!(f, "Set Antenna Connection Detector to {v}")
             }
-            Command::GetAntConnectionDetector => write!(f, "Antenna Connection Detector"),
+            Command::GetAntConnectionDetector => write!(f, "Get Antenna Connection Detector"),
             Command::SetRfLinkProfile(profile) => write!(f, "Set RF Link Profile to {:?}", profile),
             Command::GetRfLinkProfile => write!(f, "Get RF Link Profile"),
             Command::GetRfPortReturnLoss(reference_frequency) => {
                 write!(
                     f,
-                    "Rf Port Return Loss setted with reference frequency of: {reference_frequency}"
+                    "Get RF Port Return Loss at reference frequency: {reference_frequency}"
                 )
             }
-            Command::CustomizeSessionTargetInventory(session, target, phase, tag_count) => write!(
+            Command::CustomizeSessionTargetInventory(session, target, phase, repeat) => write!(
                 f,
-                "Customize Session Target Inventory for session: {:?} target: {:?} phase: {:?} tag_count: {:?}",
-                session, target, phase, tag_count
+                "Customize Session Target Inventory for session: {:?} target: {:?} phase: {:?} repeat: {:?}",
+                session, target, phase, repeat
             ),
             Command::FastSwitchAntInventory(
                 antennas,
@@ -294,7 +294,8 @@ impl Display for Command {
 impl Display for CommandResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandResult::Reset(_) => write!(f, "Failed to reset"), // il reset può solo fallire
+            CommandResult::Reset(Ok(())) => write!(f, "Reader reset successfully"),
+            CommandResult::Reset(Err(err)) => write!(f, "Failed to reset reader: {err}"),
 
             CommandResult::GetFirmwareVersion(Ok((major, minor))) => {
                 write!(f, "Firmware Version [{major}.{minor}]")
@@ -304,9 +305,11 @@ impl Display for CommandResult {
             }
 
             CommandResult::SetWorkAntenna(Ok(())) => {
-                write!(f, "Set Working Antenna set successfully")
+                write!(f, "Working Antenna set successfully")
             }
-            CommandResult::SetWorkAntenna(Err(err)) => write!(f, "Failed to set Antenna: {}", err),
+            CommandResult::SetWorkAntenna(Err(err)) => {
+                write!(f, "Failed to set Working Antenna: {}", err)
+            }
 
             CommandResult::GetWorkAntenna(Ok(pos)) => write!(f, "Work Antenna [{pos}]"),
             CommandResult::GetWorkAntenna(Err(err)) => {
@@ -328,9 +331,9 @@ impl Display for CommandResult {
             CommandResult::SetOutputPower(Err(err)) => {
                 write!(f, "Failed to set Output Power: {}", err)
             }
-            CommandResult::GetOutputPower(Ok(v)) => write!(f, "Antenna output power {:#?}", v),
+            CommandResult::GetOutputPower(Ok(v)) => write!(f, "Antenna Output Power {:#?}", v),
             CommandResult::GetOutputPower(Err(e)) => {
-                write!(f, "Failed to get Output Antenna Power: {}", e)
+                write!(f, "Failed to get Antenna Output Power: {}", e)
             }
 
             CommandResult::SetDefaultFrequencyRegion(Ok(())) => {
@@ -340,7 +343,7 @@ impl Display for CommandResult {
                 write!(f, "Failed to set Frequency Region: {}", err)
             }
             CommandResult::GetFrequencyRegion(Ok((spectrum, min, max))) => {
-                write!(f, "Frequency Region [{spectrum} [{min} -> {max}]")
+                write!(f, "Frequency Region [{spectrum}: {min} -> {max}]")
             }
             CommandResult::GetFrequencyRegion(Err(err)) => {
                 write!(f, "Failed to get Frequency Region: {}", err)
@@ -377,7 +380,7 @@ impl Display for CommandResult {
             CommandResult::GetRfPortReturnLoss(Ok(v)) => {
                 write!(
                     f,
-                    "Rf Port VSWR[{v}]
+                    "RF Port VSWR [{v}]
                     VSWR > 5 → problems
                     VSWR ≤ 3 → OK
                     VSWR ≤ 2 → good
@@ -386,7 +389,7 @@ impl Display for CommandResult {
                 )
             }
             CommandResult::GetRfPortReturnLoss(Err(err)) => {
-                write!(f, "Failed to get Rf Port Return Loss: {}", err)
+                write!(f, "Failed to get RF Port Return Loss: {}", err)
             }
 
             CommandResult::ResponsePackets(Ok(packets)) => {
@@ -944,6 +947,43 @@ mod tests {
     const FAST_SWITCH_INVENTORY_EMPTY_RESPONSE: &[u8] = &[
         0xA0, 0x0A, 0x01, 0x8A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79, 0x52,
     ];
+
+    #[test]
+    fn test_command_display_uses_unambiguous_labels() {
+        assert_eq!(
+            Command::SetOutputPower(vec![20]).to_string(),
+            "Set Output Power globally to 20"
+        );
+        assert_eq!(
+            Command::SetOutputPower(vec![20, 21]).to_string(),
+            "Set Output Power per antenna to [20, 21]"
+        );
+        assert_eq!(
+            Command::GetRfPortReturnLoss(866.0).to_string(),
+            "Get RF Port Return Loss at reference frequency: 866"
+        );
+        assert_eq!(
+            Command::CustomizeSessionTargetInventory(Session::S1, Target::A, PhaseStatus::Off, 2,)
+                .to_string(),
+            "Customize Session Target Inventory for session: S1 target: A phase: Off repeat: 2"
+        );
+    }
+
+    #[test]
+    fn test_command_result_display_distinguishes_reset_outcomes() {
+        assert_eq!(
+            CommandResult::Reset(Ok(())).to_string(),
+            "Reader reset successfully"
+        );
+        assert_eq!(
+            CommandResult::Reset(Err(FrameError::InvalidChecksum)).to_string(),
+            "Failed to reset reader: Invalid checksum"
+        );
+        assert_eq!(
+            CommandResult::GetFrequencyRegion(Ok((Spectrum::ETSI, 865.0, 868.0))).to_string(),
+            "Frequency Region [ETSI: 865 -> 868]"
+        );
+    }
 
     #[test]
     fn test_golden_decode_all_single_frame_commands() {
