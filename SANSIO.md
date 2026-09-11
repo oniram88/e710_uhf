@@ -155,7 +155,7 @@ impl ResponseDecoder {
 
 ### Fase 0 — congelare il comportamento e correggere i bug certi
 
-- [ ] Aggiungere fixture/golden test per ogni comando supportato, sia encoding sia decoding.
+- [x] Aggiungere fixture/golden test per ogni comando supportato, sia encoding sia decoding.
 - [ ] Aggiungere `CommandResult::SetOutputPower` e mappare `0x76` sulla variante corretta.
 - [ ] Correggere il `Display` di `Reset` e le altre stringhe palesemente errate senza cambiare il wire format.
 - [ ] Aggiungere test che dimostrino i panic attuali usando payload corti, error code ignoto, frequenza invalida e più di otto antenne; trasformarli poi in normali `Err`.

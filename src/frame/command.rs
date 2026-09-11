@@ -912,6 +912,170 @@ mod tests {
             ]
     );
 
+    // Golden response frames captured from the protocol format. Keep these byte arrays explicit:
+    // they protect the wire contract independently from the frame builder used for requests.
+    const RESET_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x70, 0x10, 0xDB];
+    const GET_FIRMWARE_VERSION_RESPONSE: &[u8] = &[0xA0, 0x05, 0x01, 0x72, 0x46, 0x01, 0xA1];
+    const SET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x74, 0x10, 0xD7];
+    const GET_WORK_ANTENNA_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x75, 0x00, 0xE6];
+    const SET_OUTPUT_POWER_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x76, 0x10, 0xD5];
+    const GET_OUTPUT_POWER_RESPONSE: &[u8] =
+        &[0xA0, 0x07, 0x01, 0x77, 0x14, 0x15, 0x16, 0x17, 0x8B];
+    const SET_FREQUENCY_REGION_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x78, 0x10, 0xD3];
+    const GET_FREQUENCY_REGION_RESPONSE: &[u8] = &[0xA0, 0x06, 0x01, 0x79, 0x01, 0x07, 0x3B, 0x9D];
+    const SET_BEEPER_MODE_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x7A, 0x10, 0xD1];
+    const GET_READER_TEMPERATURE_RESPONSE: &[u8] = &[0xA0, 0x05, 0x01, 0x7B, 0x01, 0x17, 0xC7];
+    const SET_ANT_CONNECTION_DETECTOR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x62, 0x10, 0xE9];
+    const GET_ANT_CONNECTION_DETECTOR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x63, 0x03, 0xF5];
+    const SET_RF_LINK_PROFILE_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x69, 0x10, 0xE2];
+    const GET_RF_LINK_PROFILE_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x6A, 0xD1, 0x20];
+    const GET_RF_PORT_RETURN_LOSS_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x7E, 0x0A, 0xD3];
+    const CUSTOMIZE_INVENTORY_EMPTY_RESPONSE: &[u8] = &[
+        0xA0, 0x0A, 0x01, 0x8B, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC3,
+    ];
+    const FAST_SWITCH_INVENTORY_EMPTY_RESPONSE: &[u8] = &[
+        0xA0, 0x0A, 0x01, 0x8A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79, 0x52,
+    ];
+
+    #[test]
+    fn test_golden_decode_all_single_frame_commands() {
+        assert_eq!(
+            Command::from_bytes(RESET_RESPONSE, &Command::Reset),
+            Ok(CommandResult::Reset(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_FIRMWARE_VERSION_RESPONSE, &Command::GetFirmwareVersion,),
+            Ok(CommandResult::GetFirmwareVersion(Ok((0x46, 0x01))))
+        );
+        assert_eq!(
+            Command::from_bytes(SET_WORK_ANTENNA_RESPONSE, &Command::SetWorkAntenna(0),),
+            Ok(CommandResult::SetWorkAntenna(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_WORK_ANTENNA_RESPONSE, &Command::GetWorkAntenna),
+            Ok(CommandResult::GetWorkAntenna(Ok(1)))
+        );
+
+        // Characterization of the current behavior. The next Phase 0 task changes this expected
+        // variant to SetOutputPower when that missing CommandResult variant is introduced.
+        assert_eq!(
+            Command::from_bytes(
+                SET_OUTPUT_POWER_RESPONSE,
+                &Command::SetOutputPower(vec![20]),
+            ),
+            Ok(CommandResult::Reset(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_OUTPUT_POWER_RESPONSE, &Command::GetOutputPower),
+            Ok(CommandResult::GetOutputPower(Ok(vec![20, 21, 22, 23])))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                SET_FREQUENCY_REGION_RESPONSE,
+                &Command::SetDefaultFrequencyRegion(Spectrum::FCC, 902.0, 928.0),
+            ),
+            Ok(CommandResult::SetDefaultFrequencyRegion(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_FREQUENCY_REGION_RESPONSE, &Command::GetFrequencyRegion),
+            Ok(CommandResult::GetFrequencyRegion(Ok((
+                Spectrum::FCC,
+                902.0,
+                928.0,
+            ))))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                SET_BEEPER_MODE_RESPONSE,
+                &Command::SetBeeperMode(BeeperMode::Quiet),
+            ),
+            Ok(CommandResult::SetBeeperMode(Ok(BeeperMode::Quiet)))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                GET_READER_TEMPERATURE_RESPONSE,
+                &Command::GetReaderTemperature,
+            ),
+            Ok(CommandResult::GetReaderTemperature(Ok(23.0)))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                SET_ANT_CONNECTION_DETECTOR_RESPONSE,
+                &Command::SetAntConnectionDetector(3),
+            ),
+            Ok(CommandResult::SetAntConnectionDetector(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                GET_ANT_CONNECTION_DETECTOR_RESPONSE,
+                &Command::GetAntConnectionDetector,
+            ),
+            Ok(CommandResult::GetAntConnectionDetector(Ok(3)))
+        );
+        assert_eq!(
+            Command::from_bytes(
+                SET_RF_LINK_PROFILE_RESPONSE,
+                &Command::SetRfLinkProfile(RfLinkProfile::Tari25usMiller4KHz250),
+            ),
+            Ok(CommandResult::SetRfLinkProfile(Ok(())))
+        );
+        assert_eq!(
+            Command::from_bytes(GET_RF_LINK_PROFILE_RESPONSE, &Command::GetRfLinkProfile),
+            Ok(CommandResult::GetRfLinkProfile(Ok(
+                RfLinkProfile::Tari25usMiller4KHz250,
+            )))
+        );
+
+        let return_loss = Command::from_bytes(
+            GET_RF_PORT_RETURN_LOSS_RESPONSE,
+            &Command::GetRfPortReturnLoss(866.0),
+        )
+        .expect("the golden return-loss frame should decode");
+        match return_loss {
+            CommandResult::GetRfPortReturnLoss(Ok(vswr)) => {
+                assert!((vswr - 1.924_950_591_148_529).abs() < f64::EPSILON);
+            }
+            result => panic!("expected a successful return-loss response, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_golden_decode_inventory_commands_without_tags() {
+        let customize_command =
+            Command::CustomizeSessionTargetInventory(Session::S0, Target::A, PhaseStatus::Off, 0);
+        assert_eq!(
+            Command::from_bytes(CUSTOMIZE_INVENTORY_EMPTY_RESPONSE, &customize_command),
+            Ok(CommandResult::ResponsePackets(Ok((
+                vec![],
+                ReadResult {
+                    antenna_id: 7,
+                    read_rate: 0,
+                    total_read: 0,
+                },
+            ))))
+        );
+
+        let fast_switch_command = Command::FastSwitchAntInventory(
+            vec![(0, 1)],
+            0,
+            Session::S0,
+            Target::A,
+            PhaseStatus::Off,
+            0,
+        );
+        assert_eq!(
+            Command::from_bytes(FAST_SWITCH_INVENTORY_EMPTY_RESPONSE, &fast_switch_command),
+            Ok(CommandResult::ResponsePackets(Ok((
+                vec![],
+                ReadResult {
+                    antenna_id: 0,
+                    read_rate: 0,
+                    total_read: 0,
+                },
+            ))))
+        );
+    }
+
     #[test]
     fn test_parse_command_get_firmware_version() {
         let cmd = Command::from_bytes(
