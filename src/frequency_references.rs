@@ -226,6 +226,10 @@ pub enum Spectrum {
     FCC = 0x01,
     ETSI = 0x02,
     CHN = 0x03,
+    /// Regione configurata dall'utente.
+    ///
+    /// L'encoding dei dettagli della risposta `GetFrequencyRegion` non è ancora
+    /// implementato e viene segnalato come `FrameError::UnsupportedResponse`.
     CUSTOM = 0x04,
 }
 

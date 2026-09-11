@@ -16,6 +16,11 @@ pub enum FrameError {
         actual: usize,
         max: usize,
     },
+    UnsupportedResponse {
+        command: u8,
+        reason: &'static str,
+        raw: Vec<u8>,
+    },
     ResponseNotExpected(Vec<u8>),
     InvalidPacket(Vec<u8>),
     IncompletePacket(Vec<u8>),
@@ -45,6 +50,14 @@ impl Display for FrameError {
             FrameError::TooManyAntennas { actual, max } => {
                 write!(f, "Too many antennas: got {actual}, maximum is {max}")
             }
+            FrameError::UnsupportedResponse {
+                command,
+                reason,
+                raw,
+            } => write!(
+                f,
+                "Unsupported response for command 0x{command:02X}: {reason}; raw data: {raw:02X?}"
+            ),
             FrameError::ResponseNotExpected(response) => {
                 write!(f, "Response not expected [RX] {:02X?}", response)
             }

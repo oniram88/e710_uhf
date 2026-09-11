@@ -700,14 +700,13 @@ impl SerializableCommand for Command {
                                     get_frequency(data[2])?
                                 ))),
                             )),
-                            Some(0x04) if length == 9 => {
-                                // todo!("Da completare la versione impostata dall'utente");
-                                Ok(CommandResult::GetFrequencyRegion(Ok((
-                                    Spectrum::CUSTOM,
-                                    0.0,
-                                    0.0,
-                                ))))
-                            }
+                            Some(0x04) if length == 9 => Ok(CommandResult::GetFrequencyRegion(
+                                Err(FrameError::UnsupportedResponse {
+                                    command: raw_command,
+                                    reason: "custom frequency-region decoding is not implemented",
+                                    raw: raw.to_vec(),
+                                }),
+                            )),
                             Some(_) => Err(FrameError::ResponseNotExpected(raw.to_vec())),
                             None => Err(FrameError::InvalidResponsePayload {
                                 expected: "a frequency-region byte",
@@ -1052,6 +1051,9 @@ mod tests {
     const UNKNOWN_RESET_ERROR_RESPONSE: &[u8] = &[0xA0, 0x04, 0x01, 0x70, 0x99, 0x52];
     const INVALID_FREQUENCY_REGION_RESPONSE: &[u8] =
         &[0xA0, 0x06, 0x01, 0x79, 0x01, 0xFF, 0x3B, 0xA5];
+    const CUSTOM_FREQUENCY_REGION_RESPONSE: &[u8] = &[
+        0xA0, 0x09, 0x01, 0x79, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD9,
+    ];
 
     #[test]
     fn test_command_display_uses_unambiguous_labels() {
@@ -1162,6 +1164,23 @@ mod tests {
             ),
             Ok(CommandResult::GetFrequencyRegion(Err(
                 FrameError::Frequency(FrequencyError::InvalidParameter(0xFF)),
+            )))
+        );
+    }
+
+    #[test]
+    fn custom_frequency_region_returns_unsupported_response() {
+        assert_eq!(
+            Command::from_bytes(
+                CUSTOM_FREQUENCY_REGION_RESPONSE,
+                &Command::GetFrequencyRegion,
+            ),
+            Ok(CommandResult::GetFrequencyRegion(Err(
+                FrameError::UnsupportedResponse {
+                    command: 0x79,
+                    reason: "custom frequency-region decoding is not implemented",
+                    raw: CUSTOM_FREQUENCY_REGION_RESPONSE.to_vec(),
+                },
             )))
         );
     }
